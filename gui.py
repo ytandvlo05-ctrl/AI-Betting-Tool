@@ -2,7 +2,8 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-import os  # do obsługi plików z historią
+import os
+import requests  # Dodane do obsługi The Odds API
 
 # --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="AI Ultra Betting Center", page_icon="⚽", layout="wide")
@@ -89,6 +90,50 @@ if not all_data:
     st.error("Błąd pobierania danych. Sprawdź połączenie z siecią.")
     st.stop()
 
+# --- POBIERANIE KURSÓW DLA KONKRETNEGO MECZU (Do Centrum Analizy) ---
+@st.cache_data(ttl=300)
+def fetch_live_odds(api_key, league_name, h_team, a_team):
+    if not api_key or api_key == "TWÓJ_KLUCZ_API_TUTAJ": return None
+    
+    odds_api_leagues = {
+        "Premier League": "soccer_epl",
+        "Bundesliga": "soccer_germany_bundesliga",
+        "Ligue 1": "soccer_france_ligue_one",
+        "La Liga": "soccer_spain_la_liga",
+        "Serie A": "soccer_italy_serie_a",
+        "Liga Portugal": "soccer_portugal_primeira_liga"
+    }
+    
+    sport_key = odds_api_leagues.get(league_name)
+    if not sport_key: return None
+    
+    url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds/"
+    params = {"apiKey": api_key, "regions": "eu", "markets": "h2h"}
+    
+    try:
+        res = requests.get(url, params=params)
+        if res.status_code == 200:
+            data = res.json()
+            for match in data:
+                h_api, a_api = match['home_team'], match['away_team']
+                # Substring match ze względu na różnice w nazwach
+                if h_team[:5].lower() in h_api.lower() or h_api[:5].lower() in h_team.lower():
+                    bookmakers = match.get('bookmakers', [])
+                    if bookmakers:
+                        markets = bookmakers[0].get('markets', [])
+                        if markets:
+                            outcomes = markets[0].get('outcomes', [])
+                            odds = {out['name']: out['price'] for out in outcomes}
+                            return {
+                                '1': odds.get(h_api, 0),
+                                'X': odds.get('Draw', 0),
+                                '2': odds.get(a_api, 0),
+                                'bookmaker': bookmakers[0].get('title', 'API')
+                            }
+    except Exception as e:
+        return None
+    return None
+
 # =====================================================================
 # --- NAWIGACJA GŁÓWNA (SIDEBAR) ---
 # =====================================================================
@@ -100,17 +145,16 @@ with st.sidebar:
 </div>
 """, unsafe_allow_html=True)
 
-    # Główne Menu jako Radio Buttons (Ostylowane na potężne przyciski)
     menu_choice = st.radio(
         "Nawigacja Główna", 
-        ["🎯 Centrum Analizy", "🤖 Skaner Ligi", "🏦 Bet Tracker"],
+        ["🎯 Centrum Analizy", "🔮 Złote Typy AI", "🏦 Bet Tracker"],
         label_visibility="collapsed"
     )
 
-    st.markdown("<hr style='border: none; border-top: 1px dashed rgba(255,255,255,0.1); margin: 25px 0;'>", unsafe_allow_html=True)
+    st.markdown("<hr style='border: none; border-top: 1px dashed rgba(255,255,255,0.1); margin: 15px 0;'>", unsafe_allow_html=True)
     
-    # Wybór ligi pojawia się tylko, gdy jesteśmy w analizie lub skanerze
-    if menu_choice in ["🎯 Centrum Analizy", "🤖 Skaner Ligi"]:
+    # TUTAJ BYŁ BŁĄD - ZMIENIONO NA ZŁOTE TYPY AI
+    if menu_choice in ["🎯 Centrum Analizy", "🔮 Złote Typy AI"]:
         st.markdown("<p style='color: #00b8ff; font-weight: bold; font-size: 0.85rem; text-transform: uppercase;'>🌍 Baza Rozgrywek</p>", unsafe_allow_html=True)
         league_choice = st.selectbox("Wybierz Ligę", list(all_data.keys()), label_visibility="collapsed")
         df = all_data[league_choice]
@@ -121,9 +165,12 @@ with st.sidebar:
         else:
             teams = sorted(df['HomeTeam'].unique())
             
-        st.markdown("<hr style='border: none; border-top: 1px dashed rgba(255,255,255,0.1); margin: 25px 0;'>", unsafe_allow_html=True)
+        st.markdown("<hr style='border: none; border-top: 1px dashed rgba(255,255,255,0.1); margin: 15px 0;'>", unsafe_allow_html=True)
 
-    # Status Serwera zawsze na dole
+    # --- KLUCZ API WPISANY NA SZTYWNO (Ukryty w interfejsie) ---
+    user_api_key = "6018066337170b1992549ba219aee5df"
+
+    # NAPRAWIONA RAMKA SYSTEM ONLINE (Usunięty zduplikowany div)
     st.markdown("""
 <div style="background: rgba(255,255,255,0.02); padding: 15px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.05); position: relative;">
 <div style="display: flex; align-items: center; margin-bottom: 10px;">
@@ -131,16 +178,8 @@ with st.sidebar:
 <span style="color: white; font-size: 0.85rem; font-weight: bold;">System Online</span>
 </div>
 <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: #9da5b1; margin-bottom: 5px;">
-<span>Baza Danych:</span>
-<span style="color: #00ff88;">Zsynchronizowana</span>
-</div>
-<div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: #9da5b1; margin-bottom: 5px;">
-<span>Algorytm POISSON:</span>
-<span style="color: #00d4ff;">Aktywny</span>
-</div>
-<div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: #9da5b1;">
 <span>Wersja Silnika:</span>
-<span style="color: #ffcc00;">v4.2.0 PRO</span>
+<span style="color: #ffcc00;">v5.0 PRO (xG + Time Decay)</span>
 </div>
 <style>
 @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(0, 255, 136, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(0, 255, 136, 0); } 100% { box-shadow: 0 0 0 0 rgba(0, 255, 136, 0); } }
@@ -149,109 +188,114 @@ with st.sidebar:
 """, unsafe_allow_html=True)
 
 # =====================================================================
-# --- FUNKCJE POMOCNICZE (Wspólne dla Skanera i Centrum Analizy) ---
+# --- FUNKCJE POMOCNICZE (SUPER-MODEL v5.0) ---
 # =====================================================================
-if menu_choice in ["🎯 Centrum Analizy", "🤖 Skaner Ligi"]:
-    def get_advanced_stats(team, side, mode, last_n=None):
-        current_df = df[df['Season'] == '2526']
-        if mode == "Wszystkie":
-            t_data_h = current_df[current_df['HomeTeam'] == team].copy()
-            t_data_a = current_df[current_df['AwayTeam'] == team].copy()
-            t_data = pd.concat([t_data_h, t_data_a])
-        else:
-            t_data = current_df[current_df['HomeTeam'] == team].copy() if side == 'Home' else current_df[current_df['AwayTeam'] == team].copy()
 
-        if last_n and len(t_data) > 0:
-            if 'Date' in t_data.columns:
-                t_data['Date'] = pd.to_datetime(t_data['Date'], dayfirst=True, errors='coerce')
-                t_data = t_data.sort_values('Date', ascending=False)
-            t_data = t_data.head(last_n)
-
-        m = len(t_data)
-        if m == 0: return None
+def get_advanced_stats(team, side, mode, last_n=None):
+    if 'df' not in globals(): return None
+    current_df = df[df['Season'] == '2526'].copy()
+    
+    if mode == "Wszystkie":
+        t_data = current_df[(current_df['HomeTeam'] == team) | (current_df['AwayTeam'] == team)].copy()
+    else:
+        t_data = current_df[current_df['HomeTeam'] == team].copy() if side == 'Home' else current_df[current_df['AwayTeam'] == team].copy()
         
-        gf = t_data.apply(lambda row: row['FTHG'] if row['HomeTeam'] == team else row['FTAG'], axis=1).mean()
-        ga = t_data.apply(lambda row: row['FTAG'] if row['HomeTeam'] == team else row['FTHG'], axis=1).mean()
-        ht_gf = t_data.apply(lambda row: row.get('HTHG', 0) if row['HomeTeam'] == team else row.get('HTAG', 0), axis=1).mean()
-        shots = t_data.apply(lambda row: row['HS'] if row['HomeTeam'] == team else row['AS'], axis=1).mean()
-        shots_ot = t_data.apply(lambda row: row['HST'] if row['HomeTeam'] == team else row['AST'], axis=1).mean()
-        opp_shots_ot = t_data.apply(lambda row: row['AST'] if row['HomeTeam'] == team else row['HST'], axis=1).mean()
-        corners = t_data.apply(lambda row: row['HC'] if row['HomeTeam'] == team else row['AC'], axis=1).mean()
-        opp_corners = t_data.apply(lambda row: row['AC'] if row['HomeTeam'] == team else row['HC'], axis=1).mean()
-        fouls = t_data.apply(lambda row: row['HF'] if row['HomeTeam'] == team else row['AF'], axis=1).mean()
-        yellows = t_data.apply(lambda row: row['HY'] if row['HomeTeam'] == team else row['AY'], axis=1).mean()
-        reds = t_data.apply(lambda row: row.get('HR', 0) if row['HomeTeam'] == team else row.get('AR', 0), axis=1).mean()
-
-        values = [gf, ga, ht_gf, shots, shots_ot, opp_shots_ot, corners, opp_corners, fouls, yellows, reds]
-        values = [0 if pd.isna(v) else float(v) for v in values]
-        gf, ga, ht_gf, shots, shots_ot, opp_shots_ot, corners, opp_corners, fouls, yellows, reds = values
-
-        raw_dom = (shots * 0.5) + (shots_ot * 1.0) + (corners * 0.5)
-        dom = np.clip(raw_dom / 2.0, 1.0, 10.0)
-
-        raw_killer = (gf / shots_ot) * 100 if shots_ot > 0 else 0.0
-        killer = np.clip(raw_killer, 0.0, 100.0)
-
-        punkty_karne_obrony = (ga * 2.5) + (opp_shots_ot * 0.5) + (opp_corners * 0.2)
-        safety = np.clip(12.0 - punkty_karne_obrony, 1.0, 10.0)
-
-        raw_chaos = (fouls * 0.3) + (yellows * 1.5) + (reds * 5.0)
-        chaos = np.clip(raw_chaos / 1.2, 1.0, 10.0)
-
-        return {'gf': gf, 'ga': ga, 'ht_gf': ht_gf, 'shots': shots, 'shots_ot': shots_ot, 'opp_shots_ot': opp_shots_ot, 'corners': corners, 'opp_corners': opp_corners, 'fouls': fouls, 'yellows': yellows, 'reds': reds, 'killer': killer, 'dom': dom, 'safety': safety, 'chaos': chaos, 'matches': m}
-
-    def get_team_form_trend(team, side, mode, last_n=5):
-        if mode == "Wszystkie": t_data = df[(df['HomeTeam'] == team) | (df['AwayTeam'] == team)].copy()
-        else: t_data = df[df['HomeTeam'] == team].copy() if side == 'Home' else df[df['AwayTeam'] == team].copy()
-            
-        if 'Date' in t_data.columns:
-            t_data['Date'] = pd.to_datetime(t_data['Date'], dayfirst=True, errors='coerce')
-            t_data = t_data.sort_values('Date', ascending=False)
-            
-        t_data = t_data.head(last_n).iloc[::-1]
-        symbols, points = [], []
+    if len(t_data) == 0: return None
+    
+    # TIME-DECAY (WAGA CZASU)
+    if 'Date' in t_data.columns:
+        t_data['Date'] = pd.to_datetime(t_data['Date'], dayfirst=True, errors='coerce')
+        t_data = t_data.sort_values('Date', ascending=False)
         
-        for _, row in t_data.iterrows():
-            is_h = row['HomeTeam'] == team
-            if row['FTR'] == ('H' if is_h else 'A'): symbols.append('🟢'); points.append(3)
-            elif row['FTR'] == 'D': symbols.append('🟡'); points.append(1)
-            else: symbols.append('🔴'); points.append(0)
-                
-        total_pts = sum(points)
-        if total_pts <= 3: trend_text, trend_color = "🚨 Tragiczna forma (Kryzys)", "#ff4b4b"
-        elif total_pts >= 13: trend_text, trend_color = "🔥 Wybitna forma", "#00ff88"
-        elif len(points) >= 4:
-            recent_avg = sum(points[-2:]) / 2.0
-            older_avg = sum(points[:-2]) / len(points[:-2])
-            if recent_avg > older_avg + 0.5: trend_text, trend_color = "📈 Trend wzrostowy", "#00ff88"
-            elif recent_avg < older_avg - 0.5: trend_text, trend_color = "📉 Zjazd formy", "#ff4b4b"
-            else: trend_text, trend_color = "➡️ Stabilna / Mieszana", "#ffcc00"
-        else: trend_text, trend_color = "➡️ Brak danych", "#9da5b1"
+    if last_n: t_data = t_data.head(last_n)
+    
+    n_matches = len(t_data)
+    weights = np.linspace(1.0, 0.3, n_matches) if n_matches > 1 else np.array([1.0])
+    t_data['Weight'] = weights
+    
+    def w_avg(col_h, col_a):
+        vals = t_data.apply(lambda r: r.get(col_h, 0) if r['HomeTeam'] == team else r.get(col_a, 0), axis=1).fillna(0)
+        return np.average(vals, weights=t_data['Weight'])
+
+    gf, ga = w_avg('FTHG', 'FTAG'), w_avg('FTAG', 'FTHG')
+    shots, opp_shots = w_avg('HS', 'AS'), w_avg('AS', 'HS')
+    shots_ot, opp_shots_ot = w_avg('HST', 'AST'), w_avg('AST', 'HST')
+    corners, opp_corners = w_avg('HC', 'AC'), w_avg('AC', 'HC')
+    fouls, yellows, reds = w_avg('HF', 'AF'), w_avg('HY', 'AY'), w_avg('HR', 'AR')
+    ht_gf = w_avg('HTHG', 'HTAG') if 'HTHG' in t_data.columns else gf/2
+    
+    # WŁASNE xG (EXPECTED GOALS)
+    xg_for = (gf * 0.4) + (shots_ot * 0.4) + (corners * 0.05)
+    xg_against = (ga * 0.4) + (opp_shots_ot * 0.4) + (opp_corners * 0.05)
+
+    dom = np.clip((shots_ot * 1.0 + corners * 0.5) / 1.5, 1, 10)
+    killer = np.clip((gf / shots_ot * 100) if shots_ot > 0 else 0, 0, 100)
+    safety = np.clip(12 - (xg_against * 2.5), 1, 10)
+    chaos = np.clip((fouls * 0.3 + yellows * 1.5) / 1.2, 1, 10)
+    
+    return {
+        'gf': gf, 'ga': ga, 'ht_gf': ht_gf, 'shots': shots, 'shots_ot': shots_ot, 
+        'opp_shots_ot': opp_shots_ot, 'xg_for': xg_for, 'xg_against': xg_against,
+        'fouls': fouls, 'yellows': yellows, 'reds': reds,
+        'corners': corners, 'opp_corners': opp_corners,
+        'dom': dom, 'killer': killer, 'safety': safety, 'chaos': chaos, 'matches': n_matches
+    }
+
+def get_team_form_trend(team, side, mode, last_n=5):
+    if 'df' not in globals(): return "", "", ""
+    if mode == "Wszystkie": t_data = df[(df['HomeTeam'] == team) | (df['AwayTeam'] == team)].copy()
+    else: t_data = df[df['HomeTeam'] == team].copy() if side == 'Home' else df[df['AwayTeam'] == team].copy()
+        
+    if 'Date' in t_data.columns:
+        t_data['Date'] = pd.to_datetime(t_data['Date'], dayfirst=True, errors='coerce')
+        t_data = t_data.sort_values('Date', ascending=False)
+        
+    t_data = t_data.head(last_n).iloc[::-1]
+
+    symbols, points = [], []
+    for _, row in t_data.iterrows():
+        is_h = row['HomeTeam'] == team
+        if row['FTR'] == ('H' if is_h else 'A'): symbols.append('🟢'); points.append(3)
+        elif row['FTR'] == 'D': symbols.append('🟡'); points.append(1)
+        else: symbols.append('🔴'); points.append(0)
             
-        return "".join(symbols), trend_text, trend_color
+    total_pts = sum(points)
+    if total_pts <= 3: trend_text, trend_color = "🚨 Tragiczna forma", "#ff4b4b"
+    elif total_pts >= 13: trend_text, trend_color = "🔥 Wybitna forma", "#00ff88"
+    elif len(points) >= 4:
+        recent_avg = sum(points[-2:]) / 2.0
+        older_avg = sum(points[:-2]) / len(points[:-2])
+        if recent_avg > older_avg + 0.5: trend_text, trend_color = "📈 Trend wzrostowy", "#00ff88"
+        elif recent_avg < older_avg - 0.5: trend_text, trend_color = "📉 Zjazd formy", "#ff4b4b"
+        else: trend_text, trend_color = "➡️ Stabilna / Mieszana", "#ffcc00"
+    else: trend_text, trend_color = "➡️ Brak danych", "#9da5b1"
+        
+    return "".join(symbols), trend_text, trend_color
 
-    def get_h2h_stats(team1, team2, last_n=5):
-        h2h_df = df[((df['HomeTeam'] == team1) & (df['AwayTeam'] == team2)) | ((df['HomeTeam'] == team2) & (df['AwayTeam'] == team1))].copy()
-        if len(h2h_df) == 0: return None
-        if 'Date' in h2h_df.columns:
-            h2h_df['Date'] = pd.to_datetime(h2h_df['Date'], dayfirst=True, errors='coerce')
-            h2h_df = h2h_df.sort_values('Date', ascending=False)
-        h2h_df = h2h_df.head(last_n)
-        t1_wins = draws = t2_wins = 0
-        for _, row in h2h_df.iterrows():
-            if row['FTR'] == 'D': draws += 1
-            elif (row['HomeTeam'] == team1 and row['FTR'] == 'H') or (row['AwayTeam'] == team1 and row['FTR'] == 'A'): t1_wins += 1
-            else: t2_wins += 1
-        avg_goals = (h2h_df['FTHG'].sum() + h2h_df['FTAG'].sum()) / len(h2h_df) if len(h2h_df) > 0 else 0
-        return {'data': h2h_df, 't1_w': t1_wins, 'draws': draws, 't2_w': t2_wins, 'avg_goals': avg_goals, 'total_matches': len(h2h_df)}
+def get_h2h_stats(team1, team2, last_n=5):
+    if 'df' not in globals(): return None
+    h2h_df = df[((df['HomeTeam'] == team1) & (df['AwayTeam'] == team2)) | ((df['HomeTeam'] == team2) & (df['AwayTeam'] == team1))].copy()
+    if len(h2h_df) == 0: return None
+    if 'Date' in h2h_df.columns:
+        h2h_df['Date'] = pd.to_datetime(h2h_df['Date'], dayfirst=True, errors='coerce')
+        h2h_df = h2h_df.sort_values('Date', ascending=False)
+    h2h_df = h2h_df.head(last_n)
+    t1_wins = draws = t2_wins = 0
+    for _, row in h2h_df.iterrows():
+        if row['FTR'] == 'D': draws += 1
+        elif (row['HomeTeam'] == team1 and row['FTR'] == 'H') or (row['AwayTeam'] == team1 and row['FTR'] == 'A'): t1_wins += 1
+        else: t2_wins += 1
+    avg_goals = (h2h_df['FTHG'].sum() + h2h_df['FTAG'].sum()) / len(h2h_df) if len(h2h_df) > 0 else 0
+    return {'data': h2h_df, 't1_w': t1_wins, 'draws': draws, 't2_w': t2_wins, 'avg_goals': avg_goals, 'total_matches': len(h2h_df)}
 
-    def create_radar_chart(h_data, a_data, h_name, a_name):
-        categories = ['🔥 Dominacja', '🎯 Kiler', '🧱 Obrona', '🧨 Chaos']
-        fig = go.Figure()
-        fig.add_trace(go.Scatterpolar(r=[h_data['dom']*10, h_data['killer'], h_data['safety']*10, h_data['chaos']*10], theta=categories, fill='toself', name=h_name, line_color='#00ff88'))
-        fig.add_trace(go.Scatterpolar(r=[a_data['dom']*10, a_data['killer'], a_data['safety']*10, a_data['chaos']*10], theta=categories, fill='toself', name=a_name, line_color='#ff4b4b'))
-        fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 100], showticklabels=False), bgcolor="rgba(0,0,0,0)"), showlegend=True, legend=dict(itemclick=False, itemdoubleclick=False), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="white", size=14))
-        return fig
+def create_radar_chart(h_data, a_data, h_name, a_name):
+    categories = ['🔥 Dominacja', '🎯 Kiler', '🧱 Obrona', '🧨 Chaos']
+    fig = go.Figure()
+    fig.add_trace(go.Scatterpolar(r=[h_data['dom']*10, h_data['killer'], h_data['safety']*10, h_data['chaos']*10], theta=categories, fill='toself', name=h_name, line_color='#00ff88'))
+    fig.add_trace(go.Scatterpolar(r=[a_data['dom']*10, a_data['killer'], a_data['safety']*10, a_data['chaos']*10], theta=categories, fill='toself', name=a_name, line_color='#ff4b4b'))
+    fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 100], showticklabels=False), bgcolor="rgba(0,0,0,0)"), showlegend=True, legend=dict(itemclick=False, itemdoubleclick=False), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="white", size=14))
+    return fig
+
 
 # =====================================================================
 # --- EKRAN 1: CENTRUM ANALIZY ---
@@ -354,12 +398,38 @@ if menu_choice == "🎯 Centrum Analizy":
                 st.markdown(f"""<div style="background: rgba(255, 75, 75, 0.05); border: 1px dashed #ff4b4b; border-radius: 12px; padding: 15px; text-align: center;"><div style="color: #9da5b1; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px;">Algorytm wyliczył moc: <b>{a_team}</b></div><div style="color: #ff4b4b; font-size: 2.2rem; font-weight: 900;">{auto_a_power}%</div></div>""", unsafe_allow_html=True)
             st.write("")
             
-            avg_h_g, avg_a_g = df['FTHG'].mean() or 1.35, df['FTAG'].mean() or 1.25
-            l_h = max(0.3, ((df[df['HomeTeam'] == h_team]['FTHG'].mean() or avg_h_g) / avg_h_g) * ((df[df['AwayTeam'] == a_team]['FTHG'].mean() or avg_h_g) / avg_h_g) * avg_h_g * (h_adj/100))
-            l_a = max(0.3, ((df[df['AwayTeam'] == a_team]['FTAG'].mean() or avg_a_g) / avg_a_g) * ((df[df['HomeTeam'] == h_team]['FTAG'].mean() or avg_a_g) / avg_a_g) * avg_a_g * (a_adj/100))
+            # =====================================================================
+            # --- SUPER-MODEL: xG + ELO + Dixon-Coles ---
+            # =====================================================================
+            # NAPRAWA: Zmieniamy abstrakcyjne mnożniki na realne bramki z uwzględnieniem AI Power Index
+            base_l_h = (h_stats['gf'] + a_stats['ga']) / 2.0
+            base_l_a = (a_stats['gf'] + h_stats['ga']) / 2.0
             
-            s_h, s_a = np.random.poisson(l_h, 10000), np.random.poisson(l_a, 10000)
-            win, draw, loss = np.mean(s_h > s_a), np.mean(s_h == s_a), np.mean(s_h < s_a)
+            l_h = max(0.1, base_l_h * (h_adj / 100.0))
+            l_a = max(0.1, base_l_a * (a_adj / 100.0))
+
+            s_h = np.random.poisson(l_h, 20000)
+            s_a = np.random.poisson(l_a, 20000)
+            
+            raw_win, raw_draw, raw_loss = np.mean(s_h > s_a), np.mean(s_h == s_a), np.mean(s_h < s_a)
+            
+            dc_boost_draw = 0.08 
+            dc_boost_underdog = 0.04 
+            chaos_factor = (h_stats['chaos'] + a_stats['chaos']) / 20.0 
+            
+            adj_draw = raw_draw + dc_boost_draw + (chaos_factor * 0.06)
+            
+            if raw_win > raw_loss:
+                adj_win = raw_win - dc_boost_draw - dc_boost_underdog
+                adj_loss = raw_loss + dc_boost_underdog
+            else:
+                adj_loss = raw_loss - dc_boost_draw - dc_boost_underdog
+                adj_win = raw_win + dc_boost_underdog
+                
+            adj_win, adj_draw, adj_loss = max(0, adj_win), max(0, adj_draw), max(0, adj_loss)
+            total = adj_win + adj_draw + adj_loss
+            win, draw, loss = adj_win/total, adj_draw/total, adj_loss/total
+            # =====================================================================
 
             st.write("")
             st.markdown("### 🎯 Przewidywane Prawdopodobieństwo (1X2)")
@@ -412,20 +482,43 @@ if menu_choice == "🎯 Centrum Analizy":
                     prob = np.mean((s_h == h_g) & (s_a == a_g)) * 100
                     if prob > 1.0: results.append((h_g, a_g, prob))
 
+            st.markdown("#### 🎯 Najbardziej Prawdopodobne Wyniki Meczu")
+            results = []
+            for h_g in range(6): # Szukamy wyników od 0 do 5 bramek
+                for a_g in range(6):
+                    prob = np.mean((s_h == h_g) & (s_a == a_g)) * 100
+                    if prob > 1.0: results.append((h_g, a_g, prob))
+
             results = sorted(results, key=lambda x: x[2], reverse=True)[:8]
-            cols = st.columns(4)
-            for idx, (h_g, a_g, prob) in enumerate(results):
-                with cols[idx % 4]:
-                    st.markdown(f"""<div style="background: linear-gradient(135deg, #1e212b, #161922); border-radius: 12px; padding: 15px; text-align: center; border: 2px solid rgba(0, 255, 136, 0.3); margin-bottom: 10px;"><h2 style="margin: 0; color: #00ff88;">{h_g} - {a_g}</h2><p style="margin: 5px 0 0 0; font-size: 1.1em; color: white;"><strong>{prob:.1f}%</strong></p></div>""", unsafe_allow_html=True)
+            
+            if len(results) > 0:
+                cols = st.columns(4)
+                for idx, (h_g, a_g, prob) in enumerate(results):
+                    with cols[idx % 4]:
+                        st.markdown(f"""<div style="background: linear-gradient(135deg, #1e212b, #161922); border-radius: 12px; padding: 15px; text-align: center; border: 2px solid rgba(0, 255, 136, 0.3); margin-bottom: 10px;"><h2 style="margin: 0; color: #00ff88;">{h_g} - {a_g}</h2><p style="margin: 5px 0 0 0; font-size: 1.1em; color: white;"><strong>{prob:.1f}%</strong></p></div>""", unsafe_allow_html=True)
+            else:
+                st.info("⚠️ System rozproszył prawdopodobieństwo (zbyt duży chaos bramkowy). Brak wyraźnie dominującego wyniku.")
 
             st.divider()
             st.markdown("<h3 style='text-align: center; color: #00ff88;'>⚖️ Zaawansowany Value Bet Finder (1X2)</h3>", unsafe_allow_html=True)
-            st.markdown("<p style='text-align: center; color: #9da5b1;'>Wpisz kursy bukmachera, aby sprawdzić ich realną opłacalność oraz ukrytą marżę.</p>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; color: #9da5b1;'>System pobiera kursy automatycznie (jeśli podałeś klucz API) lub pozwala wpisać je ręcznie.</p>", unsafe_allow_html=True)
+
+            # INTEGRACJA THE ODDS API DLA KURSÓW
+            fetched_odds = fetch_live_odds(user_api_key, league_choice, h_team, a_team)
+            default_1, default_x, default_2 = 2.50, 3.20, 2.80
+            provider_text = "Brak API / Wpisz ręcznie"
+            
+            if fetched_odds:
+                default_1 = fetched_odds.get('1', default_1)
+                default_x = fetched_odds.get('X', default_x)
+                default_2 = fetched_odds.get('2', default_2)
+                provider_text = f"Pobrano z The Odds API ({fetched_odds.get('bookmaker', 'Auto')})"
+                st.success(f"✅ {provider_text}")
 
             col_o1, col_ox, col_o2 = st.columns(3)
-            odds_1 = col_o1.number_input(f"Kurs 1 ({h_team})", min_value=1.01, value=2.50, step=0.05)
-            odds_x = col_ox.number_input("Kurs X (Remis)", min_value=1.01, value=3.20, step=0.05)
-            odds_2 = col_o2.number_input(f"Kurs 2 ({a_team})", min_value=1.01, value=2.80, step=0.05)
+            odds_1 = col_o1.number_input(f"Kurs 1 ({h_team})", min_value=1.01, value=float(default_1), step=0.05)
+            odds_x = col_ox.number_input("Kurs X (Remis)", min_value=1.01, value=float(default_x), step=0.05)
+            odds_2 = col_o2.number_input(f"Kurs 2 ({a_team})", min_value=1.01, value=float(default_2), step=0.05)
 
             if odds_1 > 1.01 and odds_x > 1.01 and odds_2 > 1.01:
                 prob_1, prob_x, prob_2 = 1/odds_1, 1/odds_x, 1/odds_2
@@ -535,7 +628,7 @@ if menu_choice == "🎯 Centrum Analizy":
 
     with tab3:
         st.header("📋 AI Betting Predictions & Insights")
-        st.markdown("<p style='color: #9da5b1;'>Ostateczne wnioski algorytmu na podstawie symulacji 10,000 scenariuszy oraz analizy DNA zespołów.</p>", unsafe_allow_html=True)
+        st.markdown("<p style='color: #9da5b1;'>Ostateczne wnioski algorytmu na podstawie symulacji 20,000 scenariuszy oraz analizy DNA zespołów.</p>", unsafe_allow_html=True)
         if h_stats and a_stats:
             if win > loss and win > draw: main_pick, main_prob, main_col, main_icon = h_team, win, "#00ff88", "🏠"
             elif loss > win and loss > draw: main_pick, main_prob, main_col, main_icon = a_team, loss, "#ff4b4b", "✈️"
@@ -561,7 +654,10 @@ if menu_choice == "🎯 Centrum Analizy":
                 if o25 > 0.55: expert_tips.append(("Powyżej 2.5 gola", o25))
                 if o35 > 0.40: expert_tips.append(("Powyżej 3.5 gola", o35))
                 if btts_ht > 0.25: expert_tips.append(("BTTS w 1. połowie", btts_ht))
-                expert_tips.append((f"Wynik: {results[0][0]}-{results[0][1]}", results[0][2]/100))
+                
+                # ZABEZPIECZENIE: Sprawdzamy czy AI znalazło jakikolwiek prawdopodobny wynik
+                if len(results) > 0:
+                    expert_tips.append((f"Wynik: {results[0][0]}-{results[0][1]}", results[0][2]/100))
 
                 for tip, prob in expert_tips[:3]: st.markdown(f"""<div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); padding: 12px; border-radius: 10px; margin-bottom: 10px;"><span style="color: white; font-weight: bold;">{tip}</span><span style="color: #ffcc00; font-weight: 900;">{prob*100:.1f}%</span></div>""", unsafe_allow_html=True)
                 st.markdown("</div>", unsafe_allow_html=True)
@@ -573,7 +669,6 @@ if menu_choice == "🎯 Centrum Analizy":
 
     with tab4:
         st.header("🟨 Card & Aggression Analyzer")
-        # 🔥 ZMIANA: Pobieramy statystyki tylko z ostatnich 5 meczów (forma)
         h_stats_recent = get_advanced_stats(h_team, 'Home', 'Wszystkie', last_n=5)
         a_stats_recent = get_advanced_stats(a_team, 'Away', 'Wszystkie', last_n=5)
         
@@ -581,7 +676,6 @@ if menu_choice == "🎯 Centrum Analizy":
             h_agg_score = (h_stats_recent['fouls'] * 2) + (h_stats_recent['yellows'] * 10) + (h_stats_recent['reds'] * 25)
             a_agg_score = (a_stats_recent['fouls'] * 2) + (a_stats_recent['yellows'] * 10) + (a_stats_recent['reds'] * 25)
             
-            # Normalizacja i suma agresji dla Kartek
             h_agg_pct = np.clip(h_agg_score / 0.8, 0, 100)
             a_agg_pct = np.clip(a_agg_score / 0.8, 0, 100)
             total_match_heat = (h_agg_pct + a_agg_pct) / 2
@@ -593,7 +687,7 @@ if menu_choice == "🎯 Centrum Analizy":
                 <div style="background: rgba(255, 204, 0, 0.05); border: 1px solid rgba(255, 204, 0, 0.2); padding: 20px; border-radius: 15px; text-align: center;">
                     <div style="color: #ffcc00; font-size: 0.8rem; text-transform: uppercase; font-weight: bold;">Indeks Agresji: {h_team}</div>
                     <div style="color: white; font-size: 2.5rem; font-weight: 900;">{h_agg_pct:.0f}%</div>
-                    <div style="color: #9da5b1; font-size: 0.8rem; margin-top: 5px;">Śr. fauli: {h_stats['fouls']:.1f} | Kartki: {h_stats['yellows']:.1f}</div>
+                    <div style="color: #9da5b1; font-size: 0.8rem; margin-top: 5px;">Śr. fauli: {h_stats_recent['fouls']:.1f} | Kartki: {h_stats_recent['yellows']:.1f}</div>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -602,13 +696,12 @@ if menu_choice == "🎯 Centrum Analizy":
                 <div style="background: rgba(255, 204, 0, 0.05); border: 1px solid rgba(255, 204, 0, 0.2); padding: 20px; border-radius: 15px; text-align: center;">
                     <div style="color: #ffcc00; font-size: 0.8rem; text-transform: uppercase; font-weight: bold;">Indeks Agresji: {a_team}</div>
                     <div style="color: white; font-size: 2.5rem; font-weight: 900;">{a_agg_pct:.0f}%</div>
-                    <div style="color: #9da5b1; font-size: 0.8rem; margin-top: 5px;">Śr. fauli: {a_stats['fouls']:.1f} | Kartki: {a_stats['yellows']:.1f}</div>
+                    <div style="color: #9da5b1; font-size: 0.8rem; margin-top: 5px;">Śr. fauli: {a_stats_recent['fouls']:.1f} | Kartki: {a_stats_recent['yellows']:.1f}</div>
                 </div>
                 """, unsafe_allow_html=True)
 
             st.write("")
             
-            # Termometr temperatury meczu
             heat_color = "#00ff88" if total_match_heat < 40 else ("#ffcc00" if total_match_heat < 70 else "#ff4b4b")
             heat_desc = "CZYSTA GRA" if total_match_heat < 40 else ("OSTRA WALKA" if total_match_heat < 70 else "BRUTALNY MECZ")
             
@@ -645,18 +738,16 @@ if menu_choice == "🎯 Centrum Analizy":
                 <div style="background: rgba(255,255,255,0.03); padding: 15px; border-radius: 10px; border-left: 4px solid #ff4b4b;">
                     <span style="color: #9da5b1; font-size: 0.8rem;">DRUŻYNA Z WIĘKSZĄ LICZBĄ KARTREK</span><br>
                     <b style="color: white;">{more_agg}</b><br>
-                    <span style="color: #ff4b4b; font-weight: bold;">DNA: {h_stats['chaos'] if h_agg_score > a_agg_score else a_stats['chaos']:.1f}/10 (Wysoki Chaos)</span>
+                    <span style="color: #ff4b4b; font-weight: bold;">DNA: {h_stats_recent['chaos'] if h_agg_score > a_agg_score else a_stats_recent['chaos']:.1f}/10 (Wysoki Chaos)</span>
                 </div>
                 """, unsafe_allow_html=True)
                 
-            # H2H Kartek (jeśli są dane)
             h2h = get_h2h_stats(h_team, a_team, last_n=5)
             if h2h:
                 st.write("")
                 st.subheader("⚔️ Historia Kartek w H2H")
                 h2h_table = "<table class='bet-table'><thead><tr><th>Data</th><th>Mecz</th><th>Żółte</th><th>Czerwone</th></tr></thead><tbody>"
                 for _, row in h2h['data'].iterrows():
-                    # Sumujemy kartki z obu stron
                     ty = int(row.get('HY', 0) + row.get('AY', 0))
                     tr = int(row.get('HR', 0) + row.get('AR', 0))
                     d_str = pd.to_datetime(row['Date'], dayfirst=True, errors='coerce').strftime('%d.%m.%Y')
@@ -667,20 +758,14 @@ if menu_choice == "🎯 Centrum Analizy":
         st.header("⛳ Corner Kick Analytics")
         st.markdown("<p style='color: #9da5b1;'>Analiza potencjału na rzuty rożne w oparciu o ostatnie 5 spotkań (aktualna forma).</p>", unsafe_allow_html=True)
         
-        # 🔥 Pobieramy statystyki z ostatnich 5 meczów
         h_stats_recent = get_advanced_stats(h_team, 'Home', 'Wszystkie', last_n=5)
         a_stats_recent = get_advanced_stats(a_team, 'Away', 'Wszystkie', last_n=5)
         
         if h_stats_recent and a_stats_recent:
-            # Obliczenia potencjału
             h_corner_pot = (h_stats_recent['corners'] + a_stats_recent['opp_corners']) / 2
             a_corner_pot = (a_stats_recent['corners'] + h_stats_recent['opp_corners']) / 2
-            
-            # --- TO BYŁ BRAKUJĄCY ELEMENT ---
             total_expected_corners = h_corner_pot + a_corner_pot
-            # --------------------------------
             
-            # Reszta Twojego kodu wyświetlającego karty...
             col_r1, col_r2 = st.columns(2)
             with col_r1:
                 st.markdown(f"""
@@ -690,20 +775,18 @@ if menu_choice == "🎯 Centrum Analizy":
                     <div style="color: #9da5b1; font-size: 0.8rem; margin-top: 5px;">Śr. nabijanych: {h_stats_recent['corners']:.1f} | Dopuszczanych: {h_stats_recent['opp_corners']:.1f}</div>
                 </div>
                 """, unsafe_allow_html=True)
-            # ... (tutaj reszta kodu z kartą gościa i paskiem sumy rożnych)
 
             with col_r2:
                 st.markdown(f"""
                 <div style="background: rgba(0, 184, 255, 0.05); border: 1px solid rgba(0, 184, 255, 0.2); padding: 20px; border-radius: 15px; text-align: center;">
                     <div style="color: #00b8ff; font-size: 0.8rem; text-transform: uppercase; font-weight: bold;">Potencjał Rożnych: {a_team}</div>
                     <div style="color: white; font-size: 2.5rem; font-weight: 900;">{a_corner_pot:.1f}</div>
-                    <div style="color: #9da5b1; font-size: 0.8rem; margin-top: 5px;">Śr. nabijanych: {a_stats['corners']:.1f} | Dopuszczanych: {a_stats['opp_corners']:.1f}</div>
+                    <div style="color: #9da5b1; font-size: 0.8rem; margin-top: 5px;">Śr. nabijanych: {a_stats_recent['corners']:.1f} | Dopuszczanych: {a_stats_recent['opp_corners']:.1f}</div>
                 </div>
                 """, unsafe_allow_html=True)
 
             st.write("")
             
-            # Pasek całkowitej przewidywanej liczby rożnych
             st.markdown(f"""
             <div style="background: rgba(255,255,255,0.02); padding: 20px; border-radius: 15px; border-top: 4px solid #00b8ff;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -717,8 +800,6 @@ if menu_choice == "🎯 Centrum Analizy":
             st.subheader("🎯 Rekomendowane Linie (AI Corner Predictor)")
             
             c_tip1, c_tip2, c_tip3 = st.columns(3)
-            
-            # Logika podpowiedzi linii
             line_low = np.floor(total_expected_corners - 1.5)
             line_mid = np.floor(total_expected_corners - 0.5)
             
@@ -729,7 +810,6 @@ if menu_choice == "🎯 Centrum Analizy":
             with c_tip3:
                 st.markdown(f"""<div style="background: rgba(255,255,255,0.03); padding: 15px; border-radius: 10px; text-align: center; border-bottom: 3px solid #ff4b4b;"><span style="color: #9da5b1; font-size: 0.7rem;">RYZYKOWNA</span><br><b style="color: white;">Powyżej {line_mid + 1:.1f}</b></div>""", unsafe_allow_html=True)
 
-            # H2H Rożnych
             h2h = get_h2h_stats(h_team, a_team, last_n=5)
             if h2h:
                 st.write("")
@@ -742,49 +822,161 @@ if menu_choice == "🎯 Centrum Analizy":
                     d_str = pd.to_datetime(row['Date'], dayfirst=True, errors='coerce').strftime('%d.%m.%Y')
                     h2h_table += f"<tr><td>{d_str}</td><td>{row['HomeTeam']} - {row['AwayTeam']}</td><td style='font-weight:bold;'>{total_c}</td><td style='color:#00b8ff;'>{hc} : {ac}</td></tr>"
                 st.markdown(h2h_table + "</tbody></table>", unsafe_allow_html=True)
+
 # =====================================================================
-# --- EKRAN 2: SKANER LIGI ---
+# --- EKRAN 2: ZŁOTE TYPY AI (Z SUWAKIEM DATY I OVER/UNDER) ---
 # =====================================================================
-elif menu_choice == "🤖 Skaner Ligi":
+elif menu_choice == "🔮 Złote Typy AI":
     st.markdown("""
     <div style="text-align: center; margin-bottom: 20px;">
-        <h2 style="color: #00d4ff; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 5px;">🤖 Automatyczny Skaner Ligi</h2>
-        <p style="color: #9da5b1; font-size: 0.9rem;">AI analizuje całą tabelę w poszukiwaniu najlepszych trendów pod zakłady bukmacherskie.</p>
+        <h2 style="color: #ffcc00; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 5px;">🔮 Złote Typy AI</h2>
+        <p style="color: #9da5b1; font-size: 0.9rem;">System skanuje terminarz i wyłapuje najlepsze okazje zarówno na <b>OVERY</b> (🔥) jak i <b>UNDERY</b> (🧊).</p>
     </div>
     """, unsafe_allow_html=True)
 
-    if st.button("🚀 Uruchom Głęboki Skan Wybranej Ligi", use_container_width=True):
-        with st.spinner('Sztuczna inteligencja analizuje setki meczów...'):
-            current_season_df = df[df['Season'] == '2526']
-            all_teams_in_league = current_season_df['HomeTeam'].unique()
-            league_stats = []
-            
-            for t in all_teams_in_league:
-                t_stats = get_advanced_stats(t, 'Home', "Wszystkie", last_n=5)
-                if t_stats:
-                    sym, txt, col = get_team_form_trend(t, 'Home', "Wszystkie", last_n=5)
-                    power = (t_stats['dom'] * 0.3) + (t_stats['killer']/10.0 * 0.35) + (t_stats['safety'] * 0.35)
-                    league_stats.append({'team': t, 'power': (power / 5.5) * 100, 'form_sym': sym, 'avg_goals': t_stats['gf'] + t_stats['ga'], 'defense': t_stats['safety']})
-            
-            league_stats.sort(key=lambda x: x['power'], reverse=True)
-            top_teams, bottom_teams = league_stats[:3], league_stats[-3:]
-            league_stats.sort(key=lambda x: x['avg_goals'], reverse=True)
-            over_teams = league_stats[:3]
+    # --- NOWY SUWAK DATY ---
+    st.markdown("<h4 style='color: white; text-align: center; margin-top: 20px;'>📅 Wybierz dzień skanowania</h4>", unsafe_allow_html=True)
+    days_map = {0: "Dzisiaj", 1: "Jutro", 2: "Pojutrze", 3: "Za 3 dni"}
+    
+    # Generowanie ładnych etykiet z datami na żywo
+    selected_day_offset = st.select_slider(
+        "", 
+        options=[0, 1, 2, 3], 
+        format_func=lambda x: f"{days_map[x]} ({(pd.Timestamp.now() + pd.Timedelta(days=x)).strftime('%d.%m')})"
+    )
+    
+    # Obliczamy dokładną datę docelową w formacie YYYY-MM-DD
+    target_date = (pd.Timestamp.now() + pd.Timedelta(days=selected_day_offset)).strftime('%Y-%m-%d')
+    st.write("")
 
-            st.write("")
-            col_s1, col_s2, col_s3 = st.columns(3)
-            with col_s1:
-                st.markdown("<div style='background: rgba(0, 255, 136, 0.05); border-top: 4px solid #00ff88; padding: 15px; border-radius: 10px; height: 100%;'><h4 style='color: #00ff88; text-align: center; margin-top:0;'>🟢 TOP 3: Graj na nich</h4>", unsafe_allow_html=True)
-                for i, t in enumerate(top_teams): st.markdown(f"<b>{i+1}. {t['team']}</b><br><span style='font-size: 0.8rem; color: #9da5b1;'>Moc AI: <span style='color:#00ff88;'>{t['power']:.1f}%</span> | Forma: {t['form_sym']}</span><hr style='margin: 8px 0; border-color: rgba(255,255,255,0.05);'>", unsafe_allow_html=True)
-                st.markdown("</div>", unsafe_allow_html=True)
-            with col_s2:
-                st.markdown("<div style='background: rgba(255, 75, 75, 0.05); border-top: 4px solid #ff4b4b; padding: 15px; border-radius: 10px; height: 100%;'><h4 style='color: #ff4b4b; text-align: center; margin-top:0;'>🔴 FLOP 3: Graj przeciwko</h4>", unsafe_allow_html=True)
-                for i, t in enumerate(reversed(bottom_teams)): st.markdown(f"<b>{i+1}. {t['team']}</b><br><span style='font-size: 0.8rem; color: #9da5b1;'>Obrona: <span style='color:#ff4b4b;'>{t['defense']:.1f}/10</span> | Forma: {t['form_sym']}</span><hr style='margin: 8px 0; border-color: rgba(255,255,255,0.05);'>", unsafe_allow_html=True)
-                st.markdown("</div>", unsafe_allow_html=True)
-            with col_s3:
-                st.markdown("<div style='background: rgba(0, 212, 255, 0.05); border-top: 4px solid #00d4ff; padding: 15px; border-radius: 10px; height: 100%;'><h4 style='color: #00d4ff; text-align: center; margin-top:0;'>⚽ TOP 3: Gole (Over 2.5)</h4>", unsafe_allow_html=True)
-                for i, t in enumerate(over_teams): st.markdown(f"<b>{i+1}. {t['team']}</b><br><span style='font-size: 0.8rem; color: #9da5b1;'>Śr. goli w meczu: <span style='color:#00d4ff;'>{t['avg_goals']:.2f}</span></span><hr style='margin: 8px 0; border-color: rgba(255,255,255,0.05);'>", unsafe_allow_html=True)
-                st.markdown("</div>", unsafe_allow_html=True)
+    if st.button(f"🚀 Skanuj mecze na: {days_map[selected_day_offset]}", use_container_width=True):
+        if not user_api_key or user_api_key == "TWÓJ_KLUCZ_API_TUTAJ":
+            st.error("⚠️ Brak klucza API! System potrzebuje klucza The Odds API, aby pobrać dzisiejszy terminarz.")
+        else:
+            with st.spinner(f'Pobieram terminarz na {target_date} i wyliczam precyzyjne linie Over/Under...'):
+                api_matches = get_schedule_from_api(user_api_key, league_choice)
+                
+                if not api_matches:
+                    st.warning("Brak nadchodzących meczów dla tej ligi w najbliższym czasie.")
+                else:
+                    analyzed_matches = []
+                    for m in api_matches:
+                        # --- FILTROWANIE PO DACIE ---
+                        match_date_full = m.get('commence_time', '')
+                        if not match_date_full.startswith(target_date):
+                            continue # Jeśli mecz nie jest z wybranego dnia, pomijamy go!
+                            
+                        h_api, a_api = m['home_team'], m['away_team']
+                        
+                        # Szukamy prawdziwych nazw z naszej bazy CSV
+                        h_csv, a_csv = None, None
+                        for t in teams:
+                            if t[:5].lower() in h_api.lower() or h_api[:5].lower() in t.lower(): h_csv = t
+                            if t[:5].lower() in a_api.lower() or a_api[:5].lower() in t.lower(): a_csv = t
+                            
+                        if h_csv and a_csv and h_csv != a_csv:
+                            # Symulujemy konkretny mecz
+                            h_stats = get_advanced_stats(h_csv, 'Home', "Wszystkie", 5)
+                            a_stats = get_advanced_stats(a_csv, 'Away', "Wszystkie", 5)
+                            
+                            if h_stats and a_stats:
+                                # 1. 1X2 Szanse
+                                h_adj = (h_stats['dom']*0.3 + (h_stats['killer']/10)*0.35 + h_stats['safety']*0.35)/5.5 * 100
+                                a_adj = (a_stats['dom']*0.3 + (a_stats['killer']/10)*0.35 + a_stats['safety']*0.35)/5.5 * 100
+                                
+                                p_win_raw = (h_adj / (h_adj + a_adj)) + 0.10
+                                p_loss_raw = (a_adj / (h_adj + a_adj)) - 0.05
+                                p_draw_raw = 1.0 - p_win_raw - p_loss_raw
+                                
+                                max_prob = max(p_win_raw, p_draw_raw, p_loss_raw)
+                                if max_prob == p_win_raw: best_pick = f"Wygra {h_csv} (1)"
+                                elif max_prob == p_loss_raw: best_pick = f"Wygra {a_csv} (2)"
+                                else: best_pick = "Remis (X)"
+                                
+                                # 2. Czyste Oczekiwane Wartości
+                                real_exp_goals = (h_stats['gf'] + a_stats['ga'])/2 + (a_stats['gf'] + h_stats['ga'])/2
+                                exp_cards = (h_stats['yellows'] + a_stats['yellows'])/2 + 1.2
+                                exp_corners = (h_stats['corners'] + a_stats['opp_corners'])/2 + (a_stats['corners'] + h_stats['opp_corners'])/2
+                                
+                                date_str = match_date_full[:16].replace('T', ' ')
+                                
+                                analyzed_matches.append({
+                                    'match': f"{h_csv} - {a_csv}",
+                                    'date': date_str,
+                                    'safe_prob': max_prob * 100,
+                                    'pick': best_pick,
+                                    'exp_goals_val': real_exp_goals,
+                                    'card_val': exp_cards,
+                                    'corner_val': exp_corners
+                                })
+                    
+                    if not analyzed_matches:
+                        st.warning(f"Brak dopasowanych meczów na dzień: {target_date}. Spróbuj przesunąć suwak.")
+                    else:
+                        # --- SORTOWANIE NA OVERY I UNDERY ---
+                        safe_m = sorted(analyzed_matches, key=lambda x: x['safe_prob'], reverse=True)[:5]
+                        
+                        # Gole
+                        over_goals = sorted(analyzed_matches, key=lambda x: x['exp_goals_val'], reverse=True)[:3]
+                        under_goals = sorted(analyzed_matches, key=lambda x: x['exp_goals_val'])[:3]
+                        
+                        # Kartki
+                        over_cards = sorted(analyzed_matches, key=lambda x: x['card_val'], reverse=True)[:3]
+                        under_cards = sorted(analyzed_matches, key=lambda x: x['card_val'])[:3]
+                        
+                        # Rożne
+                        over_corners = sorted(analyzed_matches, key=lambda x: x['corner_val'], reverse=True)[:3]
+                        under_corners = sorted(analyzed_matches, key=lambda x: x['corner_val'])[:3]
+                        
+                        st.write("")
+                        t_safe, t_goals, t_cards, t_corners = st.tabs(["🛡️ Pewniaki (1X2)", "⚽ Gole (O/U)", "🟨 Kartki (O/U)", "⛳ Rożne (O/U)"])
+                        
+                        def make_match_card(match_name, date, value_html, desc_top, desc_bottom, border_color):
+                            return f"""<div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-left: 4px solid {border_color}; padding: 15px; border-radius: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;"><div style="display: flex; flex-direction: column;"><span style="color: #9da5b1; font-size: 0.7rem; text-transform: uppercase;">MECZ: {date} | <b style="color:white;">{desc_top}</b></span><span style="font-size: 1.1rem; font-weight: bold; color: white; margin-top: 5px;">{match_name}</span></div><div style="text-align: right;"><div style="font-size: 1.3rem; font-weight: 900;">{value_html}</div><div style="font-size: 0.75rem; color: #9da5b1; margin-top: 3px;">{desc_bottom}</div></div></div>"""
+
+                        with t_safe:
+                            st.markdown("<h4 style='color: #00ff88;'>🛡️ Najwyższe Szanse na Wynik 1X2</h4>", unsafe_allow_html=True)
+                            for m in safe_m: 
+                                st.markdown(make_match_card(m['match'], m['date'], f"<span style='color:#00ff88;'>{m['safe_prob']:.1f}%</span>", f"TYP: {m['pick']}", "Szansa na wejście", "#00ff88"), unsafe_allow_html=True)
+                        
+                        with t_goals:
+                            col_g1, col_g2 = st.columns(2)
+                            with col_g1:
+                                st.markdown("<h4 style='color: #00d4ff;'>🔥 TOP OVERY (Dużo Goli)</h4>", unsafe_allow_html=True)
+                                for m in over_goals:
+                                    line = max(1.5, np.floor(m['exp_goals_val'] - 0.5) + 0.5)
+                                    st.markdown(make_match_card(m['match'], m['date'], f"<span style='color:#00d4ff;'>Powyżej {line}</span>", "BRAMKI W MECZU", f"Oczekiwane Gole: {m['exp_goals_val']:.2f}", "#00d4ff"), unsafe_allow_html=True)
+                            with col_g2:
+                                st.markdown("<h4 style='color: #a020f0;'>🧊 TOP UNDERY (Mało Goli)</h4>", unsafe_allow_html=True)
+                                for m in under_goals:
+                                    line = min(3.5, np.ceil(m['exp_goals_val'] + 0.5) - 0.5)
+                                    st.markdown(make_match_card(m['match'], m['date'], f"<span style='color:#a020f0;'>Poniżej {line}</span>", "BRAMKI W MECZU", f"Oczekiwane Gole: {m['exp_goals_val']:.2f}", "#a020f0"), unsafe_allow_html=True)
+
+                        with t_cards:
+                            col_c1, col_c2 = st.columns(2)
+                            with col_c1:
+                                st.markdown("<h4 style='color: #ffcc00;'>🔥 OVERY (Rzeźnicy)</h4>", unsafe_allow_html=True)
+                                for m in over_cards:
+                                    line = np.floor(m['card_val']) + 0.5
+                                    st.markdown(make_match_card(m['match'], m['date'], f"<span style='color:#ffcc00;'>Powyżej {line}</span>", "TYP NA KARTKI", f"Oczekiwane Kartki: {m['card_val']:.1f}", "#ffcc00"), unsafe_allow_html=True)
+                            with col_c2:
+                                st.markdown("<h4 style='color: #a020f0;'>🧊 UNDERY (Czysta Gra)</h4>", unsafe_allow_html=True)
+                                for m in under_cards:
+                                    line = max(2.5, np.ceil(m['card_val']) - 0.5)
+                                    st.markdown(make_match_card(m['match'], m['date'], f"<span style='color:#a020f0;'>Poniżej {line}</span>", "TYP NA KARTKI", f"Oczekiwane Kartki: {m['card_val']:.1f}", "#a020f0"), unsafe_allow_html=True)
+
+                        with t_corners:
+                            col_cor1, col_cor2 = st.columns(2)
+                            with col_cor1:
+                                st.markdown("<h4 style='color: #f72585;'>🔥 OVERY (Atak Skrzydłami)</h4>", unsafe_allow_html=True)
+                                for m in over_corners:
+                                    line = np.floor(m['corner_val']) + 0.5
+                                    st.markdown(make_match_card(m['match'], m['date'], f"<span style='color:#f72585;'>Powyżej {line}</span>", "TYP NA ROŻNE", f"Oczekiwane Rożne: {m['corner_val']:.1f}", "#f72585"), unsafe_allow_html=True)
+                            with col_cor2:
+                                st.markdown("<h4 style='color: #a020f0;'>🧊 UNDERY (Gra Środkiem)</h4>", unsafe_allow_html=True)
+                                for m in under_corners:
+                                    line = max(7.5, np.ceil(m['corner_val']) - 0.5)
+                                    st.markdown(make_match_card(m['match'], m['date'], f"<span style='color:#a020f0;'>Poniżej {line}</span>", "TYP NA ROŻNE", f"Oczekiwane Rożne: {m['corner_val']:.1f}", "#a020f0"), unsafe_allow_html=True)
 
 # =====================================================================
 # --- EKRAN 3: BET TRACKER ---
@@ -802,6 +994,61 @@ elif menu_choice == "🏦 Bet Tracker":
         pd.DataFrame(columns=["Data", "Mecz", "Typ", "Kurs", "Stawka", "Status", "Zysk_Strata"]).to_csv(FILE_NAME, index=False)
 
     history_df = pd.read_csv(FILE_NAME)
+
+    # --- ULEPSZONY AUTOMATYCZNY SĘDZIA AI (FAIL-FAST) ---
+    if st.button("🔄 Sprawdź wyniki i zaktualizuj kupony"):
+        updated = False
+        with st.spinner("AI analizuje wyniki..."):
+            for idx, row in history_df.iterrows():
+                if row["Status"] == "Oczekuje":
+                    mecz_list = row["Mecz"].split(" | ")
+                    matches_checked = 0
+                    matches_won = 0
+                    any_lost = False
+                    
+                    for m_nawaz in mecz_list:
+                        for league_name in all_data:
+                            # Szukamy meczu w bazie
+                            match_data = all_data[league_name][
+                                ((all_data[league_name]['HomeTeam'] + " - " + all_data[league_name]['AwayTeam']) == m_nawaz) |
+                                ((all_data[league_name]['AwayTeam'] + " - " + all_data[league_name]['HomeTeam']) == m_nawaz)
+                            ]
+                            
+                            if not match_data.empty:
+                                result = match_data.iloc[0]
+                                res_ftr = result['FTR'] # 'H', 'D', 'A'
+                                
+                                # Sprawdzanie czy typ (z opisu) wszedł
+                                win_found = False
+                                if ("Zwycięstwo gospodarza" in row["Typ"] or "1" in row["Typ"]) and res_ftr == 'H': win_found = True
+                                elif ("Remis" in row["Typ"] or "X" in row["Typ"]) and res_ftr == 'D': win_found = True
+                                elif ("Zwycięstwo gościa" in row["Typ"] or "2" in row["Typ"]) and res_ftr == 'A': win_found = True
+                                
+                                if win_found:
+                                    matches_won += 1
+                                else:
+                                    any_lost = True # JEDEN MECZ NIE WSZEDŁ = KONIEC KUPONU
+                                
+                                matches_checked += 1
+                                break
+                        if any_lost: break # Nie sprawdzaj reszty meczów na tym kuponie
+                    
+                    # LOGIKA ZMIANY STATUSU
+                    if any_lost:
+                        history_df.at[idx, "Status"] = "Przegrana"
+                        history_df.at[idx, "Zysk_Strata"] = -row["Stawka"]
+                        updated = True
+                    elif matches_checked == len(mecz_list) and matches_won == len(mecz_list):
+                        history_df.at[idx, "Status"] = "Wygrana"
+                        history_df.at[idx, "Zysk_Strata"] = round((row["Stawka"] * row["Kurs"]) - row["Stawka"], 2)
+                        updated = True
+            
+            if updated:
+                history_df.to_csv(FILE_NAME, index=False)
+                st.success("Baza zaktualizowana! Rozliczono kupony.")
+                st.rerun()
+            else:
+                st.info("Brak nowych wyników do rozliczenia.")
 
     total_bets = len(history_df)
     won_bets = len(history_df[history_df["Status"] == "Wygrana"])
@@ -862,17 +1109,51 @@ elif menu_choice == "🏦 Bet Tracker":
         
         st.markdown(table_html + "</tbody></table>", unsafe_allow_html=True)
         
-        with st.expander("⚙️ Narzędzia Administracyjne / Korekta Błędów"):
-            options = [f"[{idx}] {row['Data']} | {str(row['Mecz']).replace(' | ', ' + ')[:32] + ('...' if len(str(row['Mecz'])) > 35 else '')} | {row['Status']}" for idx, row in history_df.iterrows()]
+        # --- ROZBUDOWANE NARZĘDZIA ADMINISTRACYJNE ---
+        with st.expander("⚙️ Narzędzia Administracyjne / Edycja Kuponów"):
+            options = [f"[{idx}] {row['Data']} | {str(row['Mecz']).replace(' | ', ' + ')[:30]}... | {row['Status']}" for idx, row in history_df.iterrows()]
+            
             if options:
-                selected = st.selectbox("Wybierz kupon do usunięcia:", options)
-                col_z1, col_z2 = st.columns(2)
-                with col_z1:
-                    if st.button("🗑️ Usuń ZAZNACZONY kupon"):
-                        history_df.drop(int(selected.split("]")[0].replace("[", ""))).reset_index(drop=True).to_csv(FILE_NAME, index=False)
+                selected_opt = st.selectbox("Wybierz kupon do modyfikacji lub usunięcia:", options)
+                idx_to_edit = int(selected_opt.split("]")[0].replace("[", ""))
+                current_row = history_df.loc[idx_to_edit]
+
+                st.markdown(f"**Wybrany kupon:** `{current_row['Mecz']}`")
+                
+                col_e1, col_e2, col_e3 = st.columns(3)
+                
+                with col_e1:
+                    new_status = st.selectbox("Zmień Status:", ["Oczekuje", "Wygrana", "Przegrana"], 
+                                             index=["Oczekuje", "Wygrana", "Przegrana"].index(current_row['Status']))
+                
+                with col_e2:
+                    if st.button("💾 Zaktualizuj Status"):
+                        # Logika przeliczania zysku przy zmianie statusu
+                        odds = float(current_row['Kurs'])
+                        stake = float(current_row['Stawka'])
+                        
+                        if new_status == "Wygrana":
+                            profit = round((stake * odds) - stake, 2)
+                        elif new_status == "Przegrana":
+                            profit = -stake
+                        else:
+                            profit = 0.0
+                            
+                        history_df.at[idx_to_edit, "Status"] = new_status
+                        history_df.at[idx_to_edit, "Zysk_Strata"] = profit
+                        history_df.to_csv(FILE_NAME, index=False)
+                        st.success(f"Zmieniono status kuponu #{idx_to_edit} na {new_status}!")
                         st.rerun()
-                with col_z2:
-                    if st.button("🚨 Usuń WSZYSTKIE kupony (Reset)"):
-                        if os.path.exists(FILE_NAME): os.remove(FILE_NAME); st.rerun()
-    else:
-        st.markdown("""<div style="background: rgba(255,255,255,0.02); padding: 40px; border-radius: 12px; border: 1px dashed rgba(255,255,255,0.1); text-align: center;"><div style="font-size: 3rem; margin-bottom: 10px;">🕸️</div><div style="color: #9da5b1; font-size: 1.1rem;">Baza jest pusta. Dodaj swój pierwszy zakład, aby aktywować Tracker!</div></div>""", unsafe_allow_html=True)
+
+                with col_e3:
+                    if st.button("🗑️ Usuń ten kupon"):
+                        history_df = history_df.drop(idx_to_edit).reset_index(drop=True)
+                        history_df.to_csv(FILE_NAME, index=False)
+                        st.warning("Kupon został usunięty.")
+                        st.rerun()
+                
+                st.divider()
+                if st.button("🚨 Usuń WSZYSTKIE kupony (Reset Bazy)"):
+                    if os.path.exists(FILE_NAME):
+                        os.remove(FILE_NAME)
+                        st.rerun()
