@@ -6,9 +6,39 @@ import os
 import requests
 from bs4 import BeautifulSoup
 import random
+import streamlit_authenticator as stauth
+from auth_config import config  # Importujemy Twoje ustawienia
 
 # --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="AI Ultra Betting Center", page_icon="⚽", layout="wide")
+
+# --- SYSTEM AUTENTYKACJI ---
+authenticator = stauth.Authenticate(
+    config['credentials'],
+    config['cookie']['name'],
+    config['cookie']['key'],
+    config['cookie']['expiry_days']
+)
+
+# 1. W nowej wersji podajemy tylko lokalizację jako słowo kluczowe
+authenticator.login(location='main')
+
+# 2. Sprawdzamy status logowania korzystając z session_state
+if st.session_state["authentication_status"]:
+    # Pobieramy dane zalogowanego użytkownika
+    name = st.session_state["name"]
+    username = st.session_state["username"]
+    
+    # Reszta Twojego kodu aplikacji (ten, który ma się wykonać po zalogowaniu)
+    
+elif st.session_state["authentication_status"] is False:
+    st.error('Błędny login lub hasło')
+    st.stop()
+elif st.session_state["authentication_status"] is None:
+    st.warning('Wprowadź dane logowania')
+    st.stop()
+
+# Jeśli logowanie się uda (status == True), reszta kodu się wykona:
 
 # --- CUSTOM CSS: STYLIZACJA DASHBOARDU I MENU ---
 st.markdown("""
@@ -169,6 +199,20 @@ def get_schedule_from_api(api_key, league_name):
 # --- NAWIGACJA GŁÓWNA (SIDEBAR) ---
 # =====================================================================
 with st.sidebar:
+    # 1. Przycisk wylogowania (zgodny z nową wersją biblioteki)
+    authenticator.logout(button_name='Wyloguj się', location='sidebar')
+    
+    # 2. Powitanie zalogowanego użytkownika
+    st.markdown(f"""
+        <div style="text-align: center; margin-top: -15px; margin-bottom: 20px;">
+            <p style="color: #9da5b1; font-size: 0.9rem; margin: 0;">Zalogowany jako:</p>
+            <b style="color: #00ff88; font-size: 1.1rem;">{st.session_state['name']}</b>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    st.divider()
+
+    # 3. Twój stylowy nagłówek AI BET PRO
     st.markdown("""
 <div style="background: linear-gradient(135deg, #00ff88 0%, #00b8ff 100%); padding: 20px; border-radius: 15px; text-align: center; margin-bottom: 25px; box-shadow: 0 4px 15px rgba(0, 255, 136, 0.2);">
 <h1 style="color: #111; margin: 0; font-size: 1.8rem; font-weight: 900; letter-spacing: 1px;">AI BET PRO</h1>
