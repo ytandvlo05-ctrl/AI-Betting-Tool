@@ -3,7 +3,9 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import os
-import requests  # Dodane do obsługi The Odds API
+import requests
+from bs4 import BeautifulSoup
+import random
 
 # --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="AI Ultra Betting Center", page_icon="⚽", layout="wide")
@@ -134,6 +136,35 @@ def fetch_live_odds(api_key, league_name, h_team, a_team):
         return None
     return None
 
+def get_schedule_from_api(api_key, league_name):
+    odds_api_leagues = {
+        "Premier League": "soccer_epl", "Bundesliga": "soccer_germany_bundesliga",
+        "Ligue 1": "soccer_france_ligue_one", "La Liga": "soccer_spain_la_liga",
+        "Serie A": "soccer_italy_serie_a", "Liga Portugal": "soccer_portugal_primeira_liga"
+    }
+    sport_key = odds_api_leagues.get(league_name)
+    if not sport_key: return []
+    
+    url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds/"
+    params = {"apiKey": api_key, "regions": "eu", "markets": "h2h"}
+    try:
+        res = requests.get(url, params=params)
+        if res.status_code == 200:
+            dane = res.json()
+            if len(dane) > 0:
+                daty = sorted(list(set(m['commence_time'][:10] for m in dane)))
+                daty_str = " | ".join(daty)
+                # st.info(f"🛠️ System API żyje! Znalazł łącznie {len(dane)} meczów. Zaplanowane dni gry to: {daty_str}")
+            else:
+                st.info("🛠️ System API działa, ale bukmacher nie wystawił jeszcze kursów na tę ligę.")
+            return dane
+        else:
+            st.error(f"🚨 Błąd z serwera API: {res.text}")
+            return []
+    except Exception as e:
+        st.error(f"🚨 Błąd połączenia: {e}")
+        return []
+
 # =====================================================================
 # --- NAWIGACJA GŁÓWNA (SIDEBAR) ---
 # =====================================================================
@@ -147,13 +178,12 @@ with st.sidebar:
 
     menu_choice = st.radio(
         "Nawigacja Główna", 
-        ["🎯 Centrum Analizy", "🔮 Złote Typy AI", "🏦 Bet Tracker"],
+        ["🎯 Centrum Analizy", "🔮 Złote Typy AI"],
         label_visibility="collapsed"
     )
 
     st.markdown("<hr style='border: none; border-top: 1px dashed rgba(255,255,255,0.1); margin: 15px 0;'>", unsafe_allow_html=True)
     
-    # TUTAJ BYŁ BŁĄD - ZMIENIONO NA ZŁOTE TYPY AI
     if menu_choice in ["🎯 Centrum Analizy", "🔮 Złote Typy AI"]:
         st.markdown("<p style='color: #00b8ff; font-weight: bold; font-size: 0.85rem; text-transform: uppercase;'>🌍 Baza Rozgrywek</p>", unsafe_allow_html=True)
         league_choice = st.selectbox("Wybierz Ligę", list(all_data.keys()), label_visibility="collapsed")
@@ -190,6 +220,71 @@ with st.sidebar:
 # =====================================================================
 # --- FUNKCJE POMOCNICZE (SUPER-MODEL v5.0) ---
 # =====================================================================
+
+def get_auto_motivation(team_name):
+    if 'df' not in globals() or 'league_choice' not in globals(): return "Normalna", 1.0, "Brak danych", "#ffcc00"
+    curr_df = df[df['Season'] == '2526'] if 'Season' in df.columns else df
+    stats = {}
+    for t in curr_df['HomeTeam'].unique():
+        df_t = curr_df[(curr_df['HomeTeam']==t) | (curr_df['AwayTeam']==t)]
+        pkt = 0
+        for _, row in df_t.iterrows():
+            if (row['HomeTeam'] == t and row['FTR'] == 'H') or (row['AwayTeam'] == t and row['FTR'] == 'A'): pkt += 3
+            elif row['FTR'] == 'D': pkt += 1
+        stats[t] = {'M': len(df_t), 'Pkt': pkt}
+        
+    if team_name not in stats or stats[team_name]['M'] == 0: return "Normalna", 1.0, "Początek sezonu", "#ffcc00"
+        
+    sorted_teams = sorted(stats.items(), key=lambda x: x[1]['Pkt'], reverse=True)
+    total_teams = len(sorted_teams)
+    rank = next((idx + 1 for idx, (t, _) in enumerate(sorted_teams) if t == team_name), 1)
+    matches_played, team_pts = stats[team_name]['M'], stats[team_name]['Pkt']
+    
+    league_rules = {
+        "Premier League": {"max_m": 38, "cl": 5, "eur": 7, "rel": 18},
+        "La Liga":        {"max_m": 38, "cl": 5, "eur": 7, "rel": 18},
+        "Serie A":        {"max_m": 38, "cl": 4, "eur": 6, "rel": 18},
+        "Bundesliga":     {"max_m": 34, "cl": 4, "eur": 6, "rel": 16},
+        "Ligue 1":        {"max_m": 34, "cl": 4, "eur": 6, "rel": 16},
+        "Liga Portugal":  {"max_m": 34, "cl": 2, "eur": 5, "rel": 16}
+    }
+    rules = league_rules.get(league_choice, {"max_m": 34, "cl": 3, "eur": 5, "rel": 16})
+    if matches_played < 10: return "Normalna", 1.0, "Spokojny początek sezonu", "#ffcc00"
+
+    def get_pts_at(r):
+        if total_teams >= r: return sorted_teams[r - 1][1]['Pkt']
+        elif total_teams > 0: return sorted_teams[-1][1]['Pkt']
+        return 0
+
+    pts_1st, pts_2nd, pts_cl, pts_eur, pts_safe = get_pts_at(1), get_pts_at(2), get_pts_at(rules["cl"]), get_pts_at(rules["eur"]), get_pts_at(rules["rel"] - 1)
+    max_pts_left = (rules["max_m"] - matches_played) * 3
+
+    if matches_played >= rules["max_m"] - 10:
+        if team_pts + max_pts_left < pts_safe: return "Minimalna", 0.75, "Pewny spadek (Rozbicie zespołu)", "#9da5b1"
+        if rank == 1 and (team_pts - pts_2nd) > max_pts_left: return "Zrelaksowana", 0.85, "Mistrzostwo zapewnione (Rezerwy)", "#9da5b1"
+        if team_pts >= pts_safe and team_pts + max_pts_left < get_pts_at(rules["eur"]): return "Wakacyjna", 0.85, "Utrzymanie pewne, o nic nie grają", "#9da5b1"
+        
+        if team_pts >= pts_1st - 6 and rank <= 3: return "Mecz o życie!", 1.3, "Walka o Mistrzostwo!", "#00ff88"
+        elif team_pts >= pts_cl - 5 and rank <= rules["cl"] + 2: return "Wysoka", 1.2, "Walka o Ligę Mistrzów", "#00d4ff"
+        elif team_pts >= pts_eur - 5 and rank <= rules["eur"] + 2: return "Wysoka", 1.15, "Pościg za pucharami", "#00ff88"
+        elif team_pts <= pts_safe + 5: return "Mecz o życie!", 1.35, "Desperacja (Utrzymanie)", "#ff4b4b"
+        else: return "Normalna", 1.0, "Środek tabeli (Brak presji)", "#ffcc00"
+    else:
+        if rank <= rules["cl"]: return "Wysoka", 1.15, "Strefa Ligi Mistrzów", "#00d4ff"
+        elif rank <= rules["eur"]: return "Wysoka", 1.1, "Strefa pucharowa", "#00ff88"
+        elif rank >= rules["rel"]: return "Wysoka", 1.15, "Strefa spadkowa", "#ff4b4b"
+        else: return "Normalna", 1.0, "Bezpieczny środek", "#ffcc00"
+
+def calc_power(stats, mot_val, missing):
+    killer_score = stats['killer'] / 10.0
+    team_rating = (stats['dom'] * 0.3) + (killer_score * 0.35) + (stats['safety'] * 0.35)
+    raw_power = (team_rating / 5.5) * 100 
+    motivated_power = raw_power * mot_val
+    absence_penalty = 1.0 - (missing * 0.05) 
+    final_power = motivated_power * absence_penalty
+    if final_power > 105:
+        final_power = 105 + (np.log(final_power - 104) * 4) 
+    return round(np.clip(final_power, 40, 115), 1)
 
 def get_advanced_stats(team, side, mode, last_n=None):
     if 'df' not in globals(): return None
@@ -308,7 +403,15 @@ if menu_choice == "🎯 Centrum Analizy":
     with col_vs: st.markdown("<h1 style='text-align: center; margin-top: 25px; color: #ffcc00; text-shadow: 0 0 15px rgba(255, 204, 0, 0.5);'>🆚</h1>", unsafe_allow_html=True)
     with col_a: a_team = st.selectbox("✈️ DRUŻYNA GOŚCI", teams, index=1 if len(teams) > 1 else 0)
 
-    st.markdown("<hr style='border: none; border-top: 1px solid rgba(255,255,255,0.05); margin: 30px 0;'>", unsafe_allow_html=True)
+    # NOWOŚĆ: Kontrola Osłabień Kadrowych
+    st.markdown("<div style='margin-top: -10px; margin-bottom: 10px;'></div>", unsafe_allow_html=True)
+    col_miss_h, col_miss_vs, col_miss_a = st.columns([4, 1, 4])
+    with col_miss_h:
+        h_missing = st.slider(f"🚑 Kluczowe osłabienia ({h_team})", min_value=0, max_value=5, value=0, help="Ilu kluczowych zawodników z podstawowej '11' dzisiaj nie zagra? (Kontuzje, kartki)")
+    with col_miss_a:
+        a_missing = st.slider(f"🚑 Kluczowe osłabienia ({a_team})", min_value=0, max_value=5, value=0, help="Ilu kluczowych zawodników z podstawowej '11' dzisiaj nie zagra? (Kontuzje, kartki)")
+
+    st.markdown("<hr style='border: none; border-top: 1px solid rgba(255,255,255,0.05); margin: 20px 0;'>", unsafe_allow_html=True)
 
     tab1, tab2, tab3, tab4, tab5 = st.tabs(["🚀 ANALIZA PRO", "📊 STATYSTYKI AI", "📋 PREDYKCJE", "🟨 KARTKI", "⛳ ROŻNE"])
 
@@ -318,8 +421,8 @@ if menu_choice == "🎯 Centrum Analizy":
         a_stats = get_advanced_stats(a_team, 'Away', 'Wszystkie')
         
         if h_stats and a_stats:
-            st.markdown("### 🏟️ Kontekst Meczu i Motywacja")
-            st.markdown("<p style='color: #9da5b1; font-size: 0.85rem;'>AI skanuje aktualną tabelę ligową i etap sezonu, aby samodzielnie określić o co grają drużyny.</p>", unsafe_allow_html=True)
+            st.markdown("### 🏟️ Kontekst Meczu i Motywacja (Smart System)")
+            st.markdown("<p style='color: #9da5b1; font-size: 0.85rem;'>AI analizuje układ tabeli i punkty potrzebne do celu. Jeśli cel jest już osiągnięty, motywacja drastycznie spada.</p>", unsafe_allow_html=True)
             
             def get_auto_motivation(team_name):
                 curr_df = df[df['Season'] == '2526'] if 'Season' in df.columns else df
@@ -355,16 +458,20 @@ if menu_choice == "🎯 Centrum Analizy":
                     elif total_teams > 0: return sorted_teams[-1][1]['Pkt']
                     return 0
 
-                pts_1st, pts_cl, pts_eur, pts_safe = get_pts_at(1), get_pts_at(rules["cl"]), get_pts_at(rules["eur"]), get_pts_at(rules["rel"] - 1)
+                pts_1st, pts_2nd, pts_cl, pts_eur, pts_safe = get_pts_at(1), get_pts_at(2), get_pts_at(rules["cl"]), get_pts_at(rules["eur"]), get_pts_at(rules["rel"] - 1)
                 max_pts_left = (rules["max_m"] - matches_played) * 3
 
                 if matches_played >= rules["max_m"] - 10:
-                    if team_pts + max_pts_left < pts_safe: return "Niska", 0.8, "Pewny spadek (Brak motywacji)", "#9da5b1"
+                    # SMART MOTIVATION: Cel już osiągnięty lub szanse stracone
+                    if team_pts + max_pts_left < pts_safe: return "Minimalna", 0.75, "Pewny spadek (Rozbicie zespołu)", "#9da5b1"
+                    if rank == 1 and (team_pts - pts_2nd) > max_pts_left: return "Zrelaksowana", 0.85, "Mistrzostwo zapewnione (Rezerwy)", "#9da5b1"
+                    if team_pts >= pts_safe and team_pts + max_pts_left < get_pts_at(rules["eur"]): return "Wakacyjna", 0.85, "Utrzymanie pewne, o nic nie grają", "#9da5b1"
+                    
                     if team_pts >= pts_1st - 6 and rank <= 3: return "Mecz o życie!", 1.3, "Walka o Mistrzostwo!", "#00ff88"
                     elif team_pts >= pts_cl - 5 and rank <= rules["cl"] + 2: return "Wysoka", 1.2, "Walka o Ligę Mistrzów", "#00d4ff"
                     elif team_pts >= pts_eur - 5 and rank <= rules["eur"] + 2: return "Wysoka", 1.15, "Pościg za pucharami", "#00ff88"
-                    elif team_pts <= pts_safe + 5: return "Mecz o życie!", 1.3, "Desperacja (Utrzymanie)", "#ff4b4b"
-                    else: return "Niska", 0.85, "Środek tabeli (Brak presji)", "#9da5b1"
+                    elif team_pts <= pts_safe + 5: return "Mecz o życie!", 1.35, "Desperacja (Utrzymanie)", "#ff4b4b"
+                    else: return "Normalna", 1.0, "Środek tabeli (Brak presji)", "#ffcc00"
                 else:
                     if rank <= rules["cl"]: return "Wysoka", 1.15, "Strefa Ligi Mistrzów", "#00d4ff"
                     elif rank <= rules["eur"]: return "Wysoka", 1.1, "Strefa pucharowa", "#00ff88"
@@ -380,16 +487,28 @@ if menu_choice == "🎯 Centrum Analizy":
             with c_mot2:
                 st.markdown(f"""<div style="background: rgba(255,255,255,0.02); border-left: 4px solid {mot_a_col}; padding: 12px 15px; border-radius: 6px; margin-bottom: 20px;"><div style="font-size: 0.75rem; color: #9da5b1; text-transform: uppercase;">Kontekst: {a_team}</div><div style="font-size: 1.1rem; font-weight: bold; color: {mot_a_col};">{mot_a_label}</div><div style="font-size: 0.85rem; margin-top: 3px; color: white;">{mot_a_desc}</div></div>""", unsafe_allow_html=True)
 
-            def calc_power(stats, mot_val):
+            def calc_power(stats, mot_val, missing):
                 killer_score = stats['killer'] / 10.0
                 team_rating = (stats['dom'] * 0.3) + (killer_score * 0.35) + (stats['safety'] * 0.35)
-                return round(np.clip((team_rating / 5.5) * 100 * mot_val, 50, 150), 1)
+                
+                raw_power = (team_rating / 5.5) * 100 
+                motivated_power = raw_power * mot_val
+                # OSŁABIENIA: Każdy brak kluczowego gracza to spadek o ok 5%
+                absence_penalty = 1.0 - (missing * 0.05) 
+                
+                final_power = motivated_power * absence_penalty
+                
+                # CAPPING: Logarytmiczne spłaszczenie (żeby nie było cyborgów po 140%)
+                if final_power > 105:
+                    final_power = 105 + (np.log(final_power - 104) * 4) 
+                    
+                return round(np.clip(final_power, 40, 115), 1)
 
-            auto_h_power, auto_a_power = calc_power(h_stats, mot_h_val), calc_power(a_stats, mot_a_val)
+            auto_h_power, auto_a_power = calc_power(h_stats, mot_h_val, h_missing), calc_power(a_stats, mot_a_val, a_missing)
             h_adj, a_adj = auto_h_power, auto_a_power
 
             st.markdown("### ⚡ Obliczona Siła Zespołów (AI Power Index)")
-            st.markdown("<p style='color: #9da5b1; font-size: 0.85rem;'>System przemnożył statystyki meczowe przez wykrytą motywację. Zero zgadywania.</p>", unsafe_allow_html=True)
+            st.markdown("<p style='color: #9da5b1; font-size: 0.85rem;'>System przemnożył bazowe statystyki przez motywację i nałożył kary za osłabienia w składzie.</p>", unsafe_allow_html=True)
             
             c_pow1, c_pow2 = st.columns(2)
             with c_pow1:
@@ -399,9 +518,8 @@ if menu_choice == "🎯 Centrum Analizy":
             st.write("")
             
             # =====================================================================
-            # --- SUPER-MODEL: xG + ELO + Dixon-Coles ---
+            # --- SUPER-MODEL: xG + ELO + ZAAWANSOWANY DIXON-COLES ---
             # =====================================================================
-            # NAPRAWA: Zmieniamy abstrakcyjne mnożniki na realne bramki z uwzględnieniem AI Power Index
             base_l_h = (h_stats['gf'] + a_stats['ga']) / 2.0
             base_l_a = (a_stats['gf'] + h_stats['ga']) / 2.0
             
@@ -413,18 +531,25 @@ if menu_choice == "🎯 Centrum Analizy":
             
             raw_win, raw_draw, raw_loss = np.mean(s_h > s_a), np.mean(s_h == s_a), np.mean(s_h < s_a)
             
-            dc_boost_draw = 0.08 
-            dc_boost_underdog = 0.04 
+            # ZAAWANSOWANA KOREKTA NA REMISY (Dixon-Coles Upgrade)
+            prob_00 = np.mean((s_h == 0) & (s_a == 0))
+            prob_11 = np.mean((s_h == 1) & (s_a == 1))
+            
+            # Jeśli mecz jest zacięty i underowy, remis jest dużo bardziej prawdopodobny
+            dc_boost_draw = 0.04 + (prob_00 * 0.2) + (prob_11 * 0.2)
+            if abs(h_adj - a_adj) < 10: dc_boost_draw += 0.05
+                
             chaos_factor = (h_stats['chaos'] + a_stats['chaos']) / 20.0 
             
-            adj_draw = raw_draw + dc_boost_draw + (chaos_factor * 0.06)
+            # Duży chaos zmniejsza szansę na ułożony remis
+            adj_draw = raw_draw + dc_boost_draw - (chaos_factor * 0.03) 
             
             if raw_win > raw_loss:
-                adj_win = raw_win - dc_boost_draw - dc_boost_underdog
-                adj_loss = raw_loss + dc_boost_underdog
+                adj_win = raw_win - (dc_boost_draw * 0.7)
+                adj_loss = raw_loss - (dc_boost_draw * 0.3)
             else:
-                adj_loss = raw_loss - dc_boost_draw - dc_boost_underdog
-                adj_win = raw_win + dc_boost_underdog
+                adj_loss = raw_loss - (dc_boost_draw * 0.7)
+                adj_win = raw_win - (dc_boost_draw * 0.3)
                 
             adj_win, adj_draw, adj_loss = max(0, adj_win), max(0, adj_draw), max(0, adj_loss)
             total = adj_win + adj_draw + adj_loss
@@ -452,7 +577,9 @@ if menu_choice == "🎯 Centrum Analizy":
             total_goals = s_h + s_a
             o15, o25, o35 = np.mean(total_goals > 1.5), np.mean(total_goals > 2.5), np.mean(total_goals > 3.5)
 
-            l_h_ht, l_a_ht = h_stats['ht_gf'] * (h_adj / 100), a_stats['ht_gf'] * (a_adj / 100)
+            # REALISTYCZNE HT (Ok. 43% bramek wpada w 1. połowie)
+            l_h_ht = l_h * 0.43
+            l_a_ht = l_a * 0.43
             s_h_ht, s_a_ht = np.random.poisson(max(0.1, l_h_ht), 8000), np.random.poisson(max(0.1, l_a_ht), 8000)
             ht_win, ht_draw, ht_loss = np.mean(s_h_ht > s_a_ht), np.mean(s_h_ht == s_a_ht), np.mean(s_h_ht < s_a_ht)
             
@@ -474,14 +601,7 @@ if menu_choice == "🎯 Centrum Analizy":
             with col_b2:
                 st.markdown(f"""<div style="background: linear-gradient(180deg, rgba(30,33,43,1) 0%, rgba(22,25,34,1) 100%); padding: 15px; border-radius: 12px; border: 1px solid rgba(0, 255, 136, 0.1);"><h4 style="color: #9da5b1; text-align: center; margin-top: 0; margin-bottom: 15px; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 1px;">⏱️ Wynik i Gole do przerwy (HT)</h4>{make_row(f"1. połowa: {h_team}", ht_win)}{make_row("Remis do przerwy", ht_draw)}{make_row(f"1. połowa: {a_team}", ht_loss)}<hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 15px 0;">{make_row("Powyżej 0.5 gola (HT)", o05_ht)}{make_row("Powyżej 1.5 gola (HT)", o15_ht)}{make_row("Obie strzelą do przerwy", btts_ht)}</div>""", unsafe_allow_html=True)
             st.write("")
-
-            st.markdown("#### 🎯 Najbardziej Prawdopodobne Wyniki Meczu")
-            results = []
-            for h_g in range(5):
-                for a_g in range(5):
-                    prob = np.mean((s_h == h_g) & (s_a == a_g)) * 100
-                    if prob > 1.0: results.append((h_g, a_g, prob))
-
+            
             st.markdown("#### 🎯 Najbardziej Prawdopodobne Wyniki Meczu")
             results = []
             for h_g in range(6): # Szukamy wyników od 0 do 5 bramek
@@ -501,7 +621,7 @@ if menu_choice == "🎯 Centrum Analizy":
 
             st.divider()
             st.markdown("<h3 style='text-align: center; color: #00ff88;'>⚖️ Zaawansowany Value Bet Finder (1X2)</h3>", unsafe_allow_html=True)
-            st.markdown("<p style='text-align: center; color: #9da5b1;'>System pobiera kursy automatycznie (jeśli podałeś klucz API) lub pozwala wpisać je ręcznie.</p>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; color: #9da5b1;'>Teraz z uwzględnieniem matematycznego sufitu dla faworytów. System łapie prawdziwe różnice w kursach.</p>", unsafe_allow_html=True)
 
             # INTEGRACJA THE ODDS API DLA KURSÓW
             fetched_odds = fetch_live_odds(user_api_key, league_choice, h_team, a_team)
@@ -836,12 +956,12 @@ elif menu_choice == "🔮 Złote Typy AI":
 
     # --- NOWY SUWAK DATY ---
     st.markdown("<h4 style='color: white; text-align: center; margin-top: 20px;'>📅 Wybierz dzień skanowania</h4>", unsafe_allow_html=True)
-    days_map = {0: "Dzisiaj", 1: "Jutro", 2: "Pojutrze", 3: "Za 3 dni"}
+    days_map = {0: "Dzisiaj", 1: "Jutro", 2: "Pojutrze", 3: "Za 3 dni", 4: "Za 4 dni", 5: "Za 5 dni", 6: "Za 6 dni", 7: "Za 7 dni"}
     
     # Generowanie ładnych etykiet z datami na żywo
     selected_day_offset = st.select_slider(
         "", 
-        options=[0, 1, 2, 3], 
+        options=list(days_map.keys()), 
         format_func=lambda x: f"{days_map[x]} ({(pd.Timestamp.now() + pd.Timedelta(days=x)).strftime('%d.%m')})"
     )
     
@@ -868,25 +988,82 @@ elif menu_choice == "🔮 Złote Typy AI":
                             
                         h_api, a_api = m['home_team'], m['away_team']
                         
-                        # Szukamy prawdziwych nazw z naszej bazy CSV
-                        h_csv, a_csv = None, None
-                        for t in teams:
-                            if t[:5].lower() in h_api.lower() or h_api[:5].lower() in t.lower(): h_csv = t
-                            if t[:5].lower() in a_api.lower() or a_api[:5].lower() in t.lower(): a_csv = t
+                        # --- LEPSZE DOPASOWANIE NAZW (SMART MATCH) ---
+                        def dopasuj(api_nazwa, lista_csv):
+                            api_lower = api_nazwa.lower().replace("fc ", "").replace(" fc", "")
                             
-                        if h_csv and a_csv and h_csv != a_csv:
-                            # Symulujemy konkretny mecz
-                            h_stats = get_advanced_stats(h_csv, 'Home', "Wszystkie", 5)
-                            a_stats = get_advanced_stats(a_csv, 'Away', "Wszystkie", 5)
+                            # 1. Słownik dla najbardziej irytujących angielskich nazw
+                            slownik = {
+                                "manchester city": "Man City",
+                                "manchester united": "Man United",
+                                "wolverhampton": "Wolves",
+                                "nottingham": "Nott'm Forest",
+                                "sheffield": "Sheff Utd",
+                                "newcastle": "Newcastle",
+                                "west ham": "West Ham",
+                                "tottenham": "Tottenham"
+                            }
                             
-                            if h_stats and a_stats:
-                                # 1. 1X2 Szanse
-                                h_adj = (h_stats['dom']*0.3 + (h_stats['killer']/10)*0.35 + h_stats['safety']*0.35)/5.5 * 100
-                                a_adj = (a_stats['dom']*0.3 + (a_stats['killer']/10)*0.35 + a_stats['safety']*0.35)/5.5 * 100
+                            for klucz, wartosc in slownik.items():
+                                if klucz in api_lower:
+                                    for t in lista_csv:
+                                        if t == wartosc: return t
+                            
+                            # 2. Standardowe szukanie dla reszty świata
+                            for t in lista_csv:
+                                t_lower = t.lower()
+                                if t_lower in api_lower or api_lower in t_lower: return t
+                                if len(t_lower) > 3 and t_lower[:4] == api_lower[:4]: return t
+                            return None
+
+                        h_csv = dopasuj(h_api, teams)
+                        a_csv = dopasuj(a_api, teams)
+                        
+                        if not (h_csv and a_csv and h_csv != a_csv):
+                            st.warning(f"⚠️ Odrzucono: **{h_api} vs {a_api}** (Brak zgodności nazw API z plikiem CSV)")
+                            continue
+                            
+                        # Symulujemy konkretny mecz
+                        h_stats = get_advanced_stats(h_csv, 'Home', "Wszystkie", 5)
+                        a_stats = get_advanced_stats(a_csv, 'Away', "Wszystkie", 5)
+                        
+                        if not (h_stats and a_stats):
+                            st.warning(f"⚠️ Odrzucono: **{h_csv} vs {a_csv}** (Za mało statystyk w bazie CSV)")
+                            continue
+
+                        if h_stats and a_stats:
+                                # 1. 1X2 Szanse - IDENTYCZNA LOGIKA JAK W CENTRUM ANALIZY
+                                _, mot_h_val, _, _ = get_auto_motivation(h_csv)
+                                _, mot_a_val, _, _ = get_auto_motivation(a_csv)
                                 
-                                p_win_raw = (h_adj / (h_adj + a_adj)) + 0.10
-                                p_loss_raw = (a_adj / (h_adj + a_adj)) - 0.05
-                                p_draw_raw = 1.0 - p_win_raw - p_loss_raw
+                                # Wyliczamy siłę (Power Index) z uwzględnieniem motywacji
+                                h_adj = calc_power(h_stats, mot_h_val, 0) # 0 osłabień domyślnie
+                                a_adj = calc_power(a_stats, mot_a_val, 0)
+                                
+                                l_h = max(0.1, ((h_stats['gf'] + a_stats['ga']) / 2.0) * (h_adj / 100.0))
+                                l_a = max(0.1, ((a_stats['gf'] + h_stats['ga']) / 2.0) * (a_adj / 100.0))
+
+                                # Symulacja Monte Carlo
+                                s_h = np.random.poisson(l_h, 20000)
+                                s_a = np.random.poisson(l_a, 20000)
+                                
+                                r_w, r_d, r_l = np.mean(s_h > s_a), np.mean(s_h == s_a), np.mean(s_h < s_a)
+                                
+                                # Dixon-Coles (Korekta na remisy)
+                                p00, p11 = np.mean((s_h==0)&(s_a==0)), np.mean((s_h==1)&(s_a==1))
+                                dc_boost = 0.04 + (p00 * 0.2) + (p11 * 0.2)
+                                if abs(h_adj - a_adj) < 10: dc_boost += 0.05
+                                
+                                chaos = (h_stats['chaos'] + a_stats['chaos']) / 20.0
+                                adj_d = r_d + dc_boost - (chaos * 0.03)
+                                
+                                if r_w > r_l:
+                                    adj_w, adj_l = r_w - (dc_boost * 0.7), r_l - (dc_boost * 0.3)
+                                else:
+                                    adj_l, adj_w = r_l - (dc_boost * 0.7), r_w - (dc_boost * 0.3)
+                                    
+                                total = max(0.001, adj_w + adj_d + adj_l)
+                                p_win_raw, p_draw_raw, p_loss_raw = adj_w/total, adj_d/total, adj_l/total
                                 
                                 max_prob = max(p_win_raw, p_draw_raw, p_loss_raw)
                                 if max_prob == p_win_raw: best_pick = f"Wygra {h_csv} (1)"
@@ -903,6 +1080,9 @@ elif menu_choice == "🔮 Złote Typy AI":
                                 analyzed_matches.append({
                                     'match': f"{h_csv} - {a_csv}",
                                     'date': date_str,
+                                    'p1': p_win_raw * 100,
+                                    'px': p_draw_raw * 100,
+                                    'p2': p_loss_raw * 100,
                                     'safe_prob': max_prob * 100,
                                     'pick': best_pick,
                                     'exp_goals_val': real_exp_goals,
@@ -916,17 +1096,17 @@ elif menu_choice == "🔮 Złote Typy AI":
                         # --- SORTOWANIE NA OVERY I UNDERY ---
                         safe_m = sorted(analyzed_matches, key=lambda x: x['safe_prob'], reverse=True)[:5]
                         
-                        # Gole
-                        over_goals = sorted(analyzed_matches, key=lambda x: x['exp_goals_val'], reverse=True)[:3]
-                        under_goals = sorted(analyzed_matches, key=lambda x: x['exp_goals_val'])[:3]
+                        # Gole (Granica: 2.6 gola)
+                        over_goals = sorted([m for m in analyzed_matches if m['exp_goals_val'] >= 2.6], key=lambda x: x['exp_goals_val'], reverse=True)[:3]
+                        under_goals = sorted([m for m in analyzed_matches if m['exp_goals_val'] < 2.6], key=lambda x: x['exp_goals_val'])[:3]
                         
-                        # Kartki
-                        over_cards = sorted(analyzed_matches, key=lambda x: x['card_val'], reverse=True)[:3]
-                        under_cards = sorted(analyzed_matches, key=lambda x: x['card_val'])[:3]
+                        # Kartki (Granica: 4.0 kartek)
+                        over_cards = sorted([m for m in analyzed_matches if m['card_val'] >= 4.0], key=lambda x: x['card_val'], reverse=True)[:3]
+                        under_cards = sorted([m for m in analyzed_matches if m['card_val'] < 4.0], key=lambda x: x['card_val'])[:3]
                         
-                        # Rożne
-                        over_corners = sorted(analyzed_matches, key=lambda x: x['corner_val'], reverse=True)[:3]
-                        under_corners = sorted(analyzed_matches, key=lambda x: x['corner_val'])[:3]
+                        # Rożne (Granica: 10.0 rożnych)
+                        over_corners = sorted([m for m in analyzed_matches if m['corner_val'] >= 10.0], key=lambda x: x['corner_val'], reverse=True)[:3]
+                        under_corners = sorted([m for m in analyzed_matches if m['corner_val'] < 10.0], key=lambda x: x['corner_val'])[:3]
                         
                         st.write("")
                         t_safe, t_goals, t_cards, t_corners = st.tabs(["🛡️ Pewniaki (1X2)", "⚽ Gole (O/U)", "🟨 Kartki (O/U)", "⛳ Rożne (O/U)"])
@@ -937,7 +1117,20 @@ elif menu_choice == "🔮 Złote Typy AI":
                         with t_safe:
                             st.markdown("<h4 style='color: #00ff88;'>🛡️ Najwyższe Szanse na Wynik 1X2</h4>", unsafe_allow_html=True)
                             for m in safe_m: 
-                                st.markdown(make_match_card(m['match'], m['date'], f"<span style='color:#00ff88;'>{m['safe_prob']:.1f}%</span>", f"TYP: {m['pick']}", "Szansa na wejście", "#00ff88"), unsafe_allow_html=True)
+                                # Tworzymy ładny pasek z rozkładem procentów
+                                rozklad_html = f"""
+                                <span style='color:#00ff88;'>1: {m['p1']:.0f}%</span> | 
+                                <span style='color:#ffcc00;'>X: {m['px']:.0f}%</span> | 
+                                <span style='color:#ff4b4b;'>2: {m['p2']:.0f}%</span>
+                                """
+                                st.markdown(make_match_card(
+                                    m['match'], 
+                                    m['date'], 
+                                    f"<span style='color:#00ff88;'>{m['safe_prob']:.1f}%</span>", 
+                                    f"TYP: {m['pick']}", 
+                                    rozklad_html, # Tutaj wstawiamy nasz rozkład
+                                    "#00ff88"
+                                ), unsafe_allow_html=True)
                         
                         with t_goals:
                             col_g1, col_g2 = st.columns(2)
@@ -957,7 +1150,7 @@ elif menu_choice == "🔮 Złote Typy AI":
                             with col_c1:
                                 st.markdown("<h4 style='color: #ffcc00;'>🔥 OVERY (Rzeźnicy)</h4>", unsafe_allow_html=True)
                                 for m in over_cards:
-                                    line = np.floor(m['card_val']) + 0.5
+                                    line = max(3.5, np.floor(m['card_val'] - 0.5) + 0.5)
                                     st.markdown(make_match_card(m['match'], m['date'], f"<span style='color:#ffcc00;'>Powyżej {line}</span>", "TYP NA KARTKI", f"Oczekiwane Kartki: {m['card_val']:.1f}", "#ffcc00"), unsafe_allow_html=True)
                             with col_c2:
                                 st.markdown("<h4 style='color: #a020f0;'>🧊 UNDERY (Czysta Gra)</h4>", unsafe_allow_html=True)
@@ -970,190 +1163,10 @@ elif menu_choice == "🔮 Złote Typy AI":
                             with col_cor1:
                                 st.markdown("<h4 style='color: #f72585;'>🔥 OVERY (Atak Skrzydłami)</h4>", unsafe_allow_html=True)
                                 for m in over_corners:
-                                    line = np.floor(m['corner_val']) + 0.5
+                                    line = max(8.5, np.floor(m['corner_val'] - 0.5) + 0.5)
                                     st.markdown(make_match_card(m['match'], m['date'], f"<span style='color:#f72585;'>Powyżej {line}</span>", "TYP NA ROŻNE", f"Oczekiwane Rożne: {m['corner_val']:.1f}", "#f72585"), unsafe_allow_html=True)
                             with col_cor2:
                                 st.markdown("<h4 style='color: #a020f0;'>🧊 UNDERY (Gra Środkiem)</h4>", unsafe_allow_html=True)
                                 for m in under_corners:
                                     line = max(7.5, np.ceil(m['corner_val']) - 0.5)
                                     st.markdown(make_match_card(m['match'], m['date'], f"<span style='color:#a020f0;'>Poniżej {line}</span>", "TYP NA ROŻNE", f"Oczekiwane Rożne: {m['corner_val']:.1f}", "#a020f0"), unsafe_allow_html=True)
-
-# =====================================================================
-# --- EKRAN 3: BET TRACKER ---
-# =====================================================================
-elif menu_choice == "🏦 Bet Tracker":
-    st.markdown("""
-    <div style="text-align: center; margin-bottom: 20px;">
-        <h2 style="color: #00ff88; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 5px;">🏦 Dziennik Typera (Bet Tracker)</h2>
-        <p style="color: #9da5b1; font-size: 0.9rem;">Twój osobisty skarbiec. Śledź zakłady, analizuj Yield i kontroluj swój bankroll jak zawodowiec.</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    FILE_NAME = "bet_history.csv"
-    if not os.path.exists(FILE_NAME):
-        pd.DataFrame(columns=["Data", "Mecz", "Typ", "Kurs", "Stawka", "Status", "Zysk_Strata"]).to_csv(FILE_NAME, index=False)
-
-    history_df = pd.read_csv(FILE_NAME)
-
-    # --- ULEPSZONY AUTOMATYCZNY SĘDZIA AI (FAIL-FAST) ---
-    if st.button("🔄 Sprawdź wyniki i zaktualizuj kupony"):
-        updated = False
-        with st.spinner("AI analizuje wyniki..."):
-            for idx, row in history_df.iterrows():
-                if row["Status"] == "Oczekuje":
-                    mecz_list = row["Mecz"].split(" | ")
-                    matches_checked = 0
-                    matches_won = 0
-                    any_lost = False
-                    
-                    for m_nawaz in mecz_list:
-                        for league_name in all_data:
-                            # Szukamy meczu w bazie
-                            match_data = all_data[league_name][
-                                ((all_data[league_name]['HomeTeam'] + " - " + all_data[league_name]['AwayTeam']) == m_nawaz) |
-                                ((all_data[league_name]['AwayTeam'] + " - " + all_data[league_name]['HomeTeam']) == m_nawaz)
-                            ]
-                            
-                            if not match_data.empty:
-                                result = match_data.iloc[0]
-                                res_ftr = result['FTR'] # 'H', 'D', 'A'
-                                
-                                # Sprawdzanie czy typ (z opisu) wszedł
-                                win_found = False
-                                if ("Zwycięstwo gospodarza" in row["Typ"] or "1" in row["Typ"]) and res_ftr == 'H': win_found = True
-                                elif ("Remis" in row["Typ"] or "X" in row["Typ"]) and res_ftr == 'D': win_found = True
-                                elif ("Zwycięstwo gościa" in row["Typ"] or "2" in row["Typ"]) and res_ftr == 'A': win_found = True
-                                
-                                if win_found:
-                                    matches_won += 1
-                                else:
-                                    any_lost = True # JEDEN MECZ NIE WSZEDŁ = KONIEC KUPONU
-                                
-                                matches_checked += 1
-                                break
-                        if any_lost: break # Nie sprawdzaj reszty meczów na tym kuponie
-                    
-                    # LOGIKA ZMIANY STATUSU
-                    if any_lost:
-                        history_df.at[idx, "Status"] = "Przegrana"
-                        history_df.at[idx, "Zysk_Strata"] = -row["Stawka"]
-                        updated = True
-                    elif matches_checked == len(mecz_list) and matches_won == len(mecz_list):
-                        history_df.at[idx, "Status"] = "Wygrana"
-                        history_df.at[idx, "Zysk_Strata"] = round((row["Stawka"] * row["Kurs"]) - row["Stawka"], 2)
-                        updated = True
-            
-            if updated:
-                history_df.to_csv(FILE_NAME, index=False)
-                st.success("Baza zaktualizowana! Rozliczono kupony.")
-                st.rerun()
-            else:
-                st.info("Brak nowych wyników do rozliczenia.")
-
-    total_bets = len(history_df)
-    won_bets = len(history_df[history_df["Status"] == "Wygrana"])
-    lost_bets = len(history_df[history_df["Status"] == "Przegrana"])
-    total_staked = history_df["Stawka"].sum()
-    total_profit = history_df["Zysk_Strata"].sum()
-    yield_pct = (total_profit / total_staked * 100) if total_staked > 0 else 0.0
-    win_rate = (won_bets / (won_bets + lost_bets) * 100) if (won_bets + lost_bets) > 0 else 0.0
-
-    profit_color = "#00ff88" if total_profit > 0 else ("#ff4b4b" if total_profit < 0 else "white")
-    yield_color = "#00ff88" if yield_pct > 0 else ("#ff4b4b" if yield_pct < 0 else "white")
-
-    def make_stat_card(title, value, top_color, text_color="white"):
-        return f"""<div style="background: linear-gradient(135deg, #1e212b, #161922); padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); box-shadow: 0 4px 15px rgba(0,0,0,0.3); text-align: center; position: relative; overflow: hidden;"><div style="position: absolute; top: 0; left: 0; width: 100%; height: 4px; background: {top_color};"></div><div style="color: #9da5b1; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px;">{title}</div><div style="color: {text_color}; font-size: 2.2rem; font-weight: 900; line-height: 1;">{value}</div></div>"""
-
-    c_stat1, c_stat2, c_stat3, c_stat4 = st.columns(4)
-    with c_stat1: st.markdown(make_stat_card("Zagrane Kupony", total_bets, "#00b8ff"), unsafe_allow_html=True)
-    with c_stat2: st.markdown(make_stat_card("Skuteczność", f"{win_rate:.1f}%", "#ffcc00", "#ffcc00"), unsafe_allow_html=True)
-    with c_stat3: st.markdown(make_stat_card("Czysty Zysk", f"{total_profit:.2f}", profit_color, profit_color), unsafe_allow_html=True)
-    with c_stat4: st.markdown(make_stat_card("ROI / Yield", f"{yield_pct:.1f}%", yield_color, yield_color), unsafe_allow_html=True)
-
-    st.divider()
-
-    st.markdown("<h3 style='color: white; margin-bottom: 15px;'>➕ Dodaj nowy e-Kupon</h3>", unsafe_allow_html=True)
-    with st.form("add_bet_form", clear_on_submit=True):
-        col_f1, col_f2 = st.columns([2, 1.2])
-        with col_f1:
-            f_match = st.text_area("Rozpisz mecze na kuponie (każdy w nowej linii)", value="", height=125)
-            f_pick = st.text_input("Główne Typy (np. Zwycięstwa, BTTS, Mix)", value="")
-        with col_f2:
-            f_date = st.date_input("Data zagrania")
-            f_odds = st.number_input("Kurs całkowity (AKO)", min_value=1.01, value=2.00, step=0.05)
-            f_stake = st.number_input("Stawka (PLN)", min_value=1.0, value=50.0, step=5.0)
-            f_status = st.selectbox("Status Kuponu", ["Oczekuje ⏳", "Wygrana ✅", "Przegrana ❌"])
-
-        if st.form_submit_button("💾 Zapisz Kupon do Bazy"):
-            profit = 0.0
-            if f_status == "Wygrana ✅": profit = (f_stake * f_odds) - f_stake
-            elif f_status == "Przegrana ❌": profit = -f_stake
-
-            new_bet = pd.DataFrame([{"Data": f_date.strftime("%Y-%m-%d"), "Mecz": f_match.replace('\n', ' | '), "Typ": f_pick, "Kurs": f_odds, "Stawka": f_stake, "Status": f_status.replace(" ✅", "").replace(" ❌", "").replace(" ⏳", ""), "Zysk_Strata": round(profit, 2)}])
-            pd.concat([history_df, new_bet], ignore_index=True).to_csv(FILE_NAME, index=False)
-            st.rerun()
-
-    st.write("")
-    st.markdown("<h3 style='color: white; margin-bottom: 15px;'>📋 Historia Twoich Zakładów</h3>", unsafe_allow_html=True)
-    
-    if len(history_df) > 0:
-        display_df = history_df.iloc[::-1].copy()
-        table_html = "<style>.tracker-table { width: 100%; border-collapse: collapse; border-radius: 12px; overflow: hidden; background: linear-gradient(180deg, #1e212b 0%, #161922 100%); border: 1px solid rgba(255,255,255,0.05); box-shadow: 0 4px 15px rgba(0,0,0,0.3); margin-bottom: 20px; } .tracker-table th { background: rgba(0, 0, 0, 0.4); color: #9da5b1; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px; padding: 15px 10px; border-bottom: 2px solid rgba(255,255,255,0.05); text-align: center; } .tracker-table td { padding: 12px 10px; color: #ffffff; border-bottom: 1px solid rgba(255,255,255,0.02); text-align: center; font-size: 0.9rem; transition: background 0.3s ease; } .tracker-table tr:hover td { background: rgba(0, 184, 255, 0.05); }</style><table class='tracker-table'><thead><tr><th style='width: 100px;'>Data</th><th style='text-align: left;'>Kupon (Mecze)</th><th>Typ</th><th>AKO</th><th>Stawka</th><th>Zysk / Strata</th><th>Status</th></tr></thead><tbody>"
-        
-        for _, row in display_df.iterrows():
-            if "Wygrana" in row['Status']: s_html, p_html = "<div style='background: rgba(0,255,136,0.1); color: #00ff88; padding: 4px 8px; border-radius: 6px; font-weight: bold; border: 1px solid rgba(0,255,136,0.2);'>WYGRANA</div>", f"<span style='color: #00ff88; font-weight: 900;'>+{row['Zysk_Strata']} PLN</span>"
-            elif "Przegrana" in row['Status']: s_html, p_html = "<div style='background: rgba(255,75,75,0.1); color: #ff4b4b; padding: 4px 8px; border-radius: 6px; font-weight: bold; border: 1px solid rgba(255,75,75,0.2);'>PRZEGRANA</div>", f"<span style='color: #ff4b4b; font-weight: 900;'>{row['Zysk_Strata']} PLN</span>"
-            else: s_html, p_html = "<div style='background: rgba(255,204,0,0.1); color: #ffcc00; padding: 4px 8px; border-radius: 6px; font-weight: bold; border: 1px solid rgba(255,204,0,0.2);'>OCZEKUJE</div>", "<span style='color: #9da5b1;'>---</span>"
-            mecz_txt = str(row['Mecz']).replace(" | ", "<br><span style='color: #00b8ff; font-size: 0.7rem; margin-right: 5px;'>➕</span>")
-            table_html += f"<tr><td style='color: #9da5b1; font-size: 0.8rem;'>{row['Data']}</td><td style='text-align: left; font-weight: bold; line-height: 1.5;'>{mecz_txt}</td><td style='color: #00d4ff; font-size: 0.85rem; font-weight: bold;'>{row['Typ']}</td><td style='font-weight: 900; font-size: 1.1rem;'>{row['Kurs']}</td><td style='color: #9da5b1;'>{row['Stawka']} zł</td><td>{p_html}</td><td>{s_html}</td></tr>"
-        
-        st.markdown(table_html + "</tbody></table>", unsafe_allow_html=True)
-        
-        # --- ROZBUDOWANE NARZĘDZIA ADMINISTRACYJNE ---
-        with st.expander("⚙️ Narzędzia Administracyjne / Edycja Kuponów"):
-            options = [f"[{idx}] {row['Data']} | {str(row['Mecz']).replace(' | ', ' + ')[:30]}... | {row['Status']}" for idx, row in history_df.iterrows()]
-            
-            if options:
-                selected_opt = st.selectbox("Wybierz kupon do modyfikacji lub usunięcia:", options)
-                idx_to_edit = int(selected_opt.split("]")[0].replace("[", ""))
-                current_row = history_df.loc[idx_to_edit]
-
-                st.markdown(f"**Wybrany kupon:** `{current_row['Mecz']}`")
-                
-                col_e1, col_e2, col_e3 = st.columns(3)
-                
-                with col_e1:
-                    new_status = st.selectbox("Zmień Status:", ["Oczekuje", "Wygrana", "Przegrana"], 
-                                             index=["Oczekuje", "Wygrana", "Przegrana"].index(current_row['Status']))
-                
-                with col_e2:
-                    if st.button("💾 Zaktualizuj Status"):
-                        # Logika przeliczania zysku przy zmianie statusu
-                        odds = float(current_row['Kurs'])
-                        stake = float(current_row['Stawka'])
-                        
-                        if new_status == "Wygrana":
-                            profit = round((stake * odds) - stake, 2)
-                        elif new_status == "Przegrana":
-                            profit = -stake
-                        else:
-                            profit = 0.0
-                            
-                        history_df.at[idx_to_edit, "Status"] = new_status
-                        history_df.at[idx_to_edit, "Zysk_Strata"] = profit
-                        history_df.to_csv(FILE_NAME, index=False)
-                        st.success(f"Zmieniono status kuponu #{idx_to_edit} na {new_status}!")
-                        st.rerun()
-
-                with col_e3:
-                    if st.button("🗑️ Usuń ten kupon"):
-                        history_df = history_df.drop(idx_to_edit).reset_index(drop=True)
-                        history_df.to_csv(FILE_NAME, index=False)
-                        st.warning("Kupon został usunięty.")
-                        st.rerun()
-                
-                st.divider()
-                if st.button("🚨 Usuń WSZYSTKIE kupony (Reset Bazy)"):
-                    if os.path.exists(FILE_NAME):
-                        os.remove(FILE_NAME)
-                        st.rerun()
