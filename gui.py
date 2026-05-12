@@ -990,30 +990,42 @@ elif menu_choice == "🔮 Złote Typy AI":
                         
                         # --- LEPSZE DOPASOWANIE NAZW (SMART MATCH) ---
                         def dopasuj(api_nazwa, lista_csv):
-                            api_lower = api_nazwa.lower().replace("fc ", "").replace(" fc", "")
+                            # Funkcja pomocnicza do czyszczenia nazw z myślników i kropek
+                            def clean_name(txt):
+                                return txt.lower().replace("-", " ").replace(".", "").strip()
                             
-                            # 1. Słownik dla najbardziej irytujących angielskich nazw
+                            n = clean_name(api_nazwa)
+                            
+                            # --- 1. SPECJALNY RADAR DLA PSG ---
+                            # Szukamy "saint germain" (bez myślnika) lub "psg"
+                            if "saint germain" in n or "psg" in n:
+                                for t in lista_csv:
+                                    t_c = clean_name(t)
+                                    if "paris sg" in t_c or "psg" in t_c or "saint germain" in t_c:
+                                        return t
+                            
+                            # --- 2. SPECJALNY RADAR DLA PARIS FC ---
+                            if "paris fc" in n:
+                                for t in lista_csv:
+                                    if "paris fc" in clean_name(t): return t
+
+                            # --- 3. SŁOWNIK ANGIELSKI ---
                             slownik = {
-                                "manchester city": "Man City",
-                                "manchester united": "Man United",
-                                "wolverhampton": "Wolves",
-                                "nottingham": "Nott'm Forest",
-                                "sheffield": "Sheff Utd",
-                                "newcastle": "Newcastle",
-                                "west ham": "West Ham",
-                                "tottenham": "Tottenham"
+                                "manchester city": "Man City", "manchester united": "Man United",
+                                "wolverhampton": "Wolves", "nottingham": "Nott'm Forest",
+                                "sheffield": "Sheff Utd", "newcastle": "Newcastle",
+                                "west ham": "West Ham", "tottenham": "Tottenham",
+                                "aston villa": "Aston Villa", "crystal palace": "Crystal Palace"
                             }
-                            
                             for klucz, wartosc in slownik.items():
-                                if klucz in api_lower:
+                                if klucz in n:
                                     for t in lista_csv:
                                         if t == wartosc: return t
                             
-                            # 2. Standardowe szukanie dla reszty świata
+                            # --- 4. KLASYCZNE SZUKANIE ---
                             for t in lista_csv:
-                                t_lower = t.lower()
-                                if t_lower in api_lower or api_lower in t_lower: return t
-                                if len(t_lower) > 3 and t_lower[:4] == api_lower[:4]: return t
+                                t_l = clean_name(t)
+                                if t_l == n or t_l in n or n in t_l: return t
                             return None
 
                         h_csv = dopasuj(h_api, teams)
@@ -1093,8 +1105,8 @@ elif menu_choice == "🔮 Złote Typy AI":
                     if not analyzed_matches:
                         st.warning(f"Brak dopasowanych meczów na dzień: {target_date}. Spróbuj przesunąć suwak.")
                     else:
-                        # --- SORTOWANIE NA OVERY I UNDERY ---
-                        safe_m = sorted(analyzed_matches, key=lambda x: x['safe_prob'], reverse=True)[:5]
+                        # Teraz pokaże wszystko, co ma chociaż 40% szans (czyli PSG i Strasbourg wrócą)
+                        safe_m = sorted([m for m in analyzed_matches if m['safe_prob'] >= 40.0], key=lambda x: x['safe_prob'], reverse=True)[:5]
                         
                         # Gole (Granica: 2.6 gola)
                         over_goals = sorted([m for m in analyzed_matches if m['exp_goals_val'] >= 2.6], key=lambda x: x['exp_goals_val'], reverse=True)[:3]
