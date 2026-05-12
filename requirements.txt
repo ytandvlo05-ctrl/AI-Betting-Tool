@@ -1,7 +1,7 @@
 streamlit
-pandas
 numpy
+pandas
 plotly
-playwright
 requests
 beautifulsoup4
+streamlit-authenticator
