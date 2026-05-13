@@ -193,27 +193,24 @@ def get_schedule_from_api(api_key, league_name):
 # =====================================================================
 # --- NAWIGACJA GŁÓWNA (SIDEBAR) ---
 # =====================================================================
+# =====================================================================
+# --- NAWIGACJA GŁÓWNA (SIDEBAR) ---
+# =====================================================================
 with st.sidebar:
-    # 1. Przycisk wylogowania (zgodny z nową wersją biblioteki)
-    authenticator.logout(button_name='Wyloguj się', location='sidebar')
+    # --- NOWE: BEZPIECZNE DODAWANIE LOGO ---
+    import os
     
-    # 2. Powitanie zalogowanego użytkownika
-    st.markdown(f"""
-        <div style="text-align: center; margin-top: -15px; margin-bottom: 20px;">
-            <p style="color: #9da5b1; font-size: 0.9rem; margin: 0;">Zalogowany jako:</p>
-            <b style="color: #00ff88; font-size: 1.1rem;">{st.session_state['name']}</b>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    st.divider()
+    # Pobieramy ścieżkę do folderu, w którym jest ten skrypt
+    base_dir = os.path.dirname(__file__)
+    logo_path = os.path.join(base_dir, "logo.png")
 
-    # 3. Twój stylowy nagłówek AI BET PRO
-    st.markdown("""
-<div style="background: linear-gradient(135deg, #00ff88 0%, #00b8ff 100%); padding: 20px; border-radius: 15px; text-align: center; margin-bottom: 25px; box-shadow: 0 4px 15px rgba(0, 255, 136, 0.2);">
-<h1 style="color: #111; margin: 0; font-size: 1.8rem; font-weight: 900; letter-spacing: 1px;">AI BET PRO</h1>
-<p style="color: #111; font-weight: bold; margin: 5px 0 0 0; font-size: 0.85rem; opacity: 0.8;">SPORTS PREDICTION ENGINE</p>
-</div>
-""", unsafe_allow_html=True)
+    if os.path.exists(logo_path):
+        col_l1, col_l2, col_l3 = st.columns([1, 4, 1])
+        with col_l2:
+            st.image(logo_path, use_container_width=True)
+            st.markdown("<div style='margin-top: -15px;'></div>", unsafe_allow_html=True)
+    else:
+        st.warning("⚠️ Nie znaleziono pliku logo.png w folderze projektu!")
 
     menu_choice = st.radio(
         "Nawigacja Główna", 
