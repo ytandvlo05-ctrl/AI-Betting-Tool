@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 import os
 import re
 import requests
+import math
 from bs4 import BeautifulSoup
 import random
 import streamlit_authenticator as stauth
@@ -31,16 +32,12 @@ if st.session_state["authentication_status"]:
     name = st.session_state["name"]
     username = st.session_state["username"]
     
-    # Reszta Twojego kodu aplikacji (ten, który ma się wykonać po zalogowaniu)
-    
 elif st.session_state["authentication_status"] is False:
     st.error('Błędny login lub hasło')
     st.stop()
 elif st.session_state["authentication_status"] is None:
     st.warning('Wprowadź dane logowania')
     st.stop()
-
-# Jeśli logowanie się uda (status == True), reszta kodu się wykona:
 
 # --- CUSTOM CSS: STYLIZACJA DASHBOARDU I MENU ---
 st.markdown("""
@@ -135,7 +132,6 @@ def fetch_live_odds(api_key, league_name, h_team, a_team):
     if not sport_key: return None
     
     url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds/"
-    # ZMIANA: Dodano "totals" do rynków!
     params = {"apiKey": api_key, "regions": "eu", "markets": "h2h,totals"}
     
     try:
@@ -144,7 +140,6 @@ def fetch_live_odds(api_key, league_name, h_team, a_team):
             data = res.json()
             for match in data:
                 h_api, a_api = match['home_team'], match['away_team']
-                # Substring match ze względu na różnice w nazwach
                 if h_team[:5].lower() in h_api.lower() or h_api[:5].lower() in h_team.lower():
                     bookmakers = match.get('bookmakers', [])
                     if bookmakers:
@@ -172,7 +167,6 @@ def get_schedule_from_api(api_key, league_name):
     if not sport_key: return []
     
     url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds/"
-    # ZMIANA: Dodano "totals" tutaj też, żeby skaner widział kursy na bramki!
     params = {"apiKey": api_key, "regions": "eu", "markets": "h2h,totals"}
     try:
         res = requests.get(url, params=params)
@@ -193,14 +187,9 @@ def get_schedule_from_api(api_key, league_name):
 # =====================================================================
 # --- NAWIGACJA GŁÓWNA (SIDEBAR) ---
 # =====================================================================
-# =====================================================================
-# --- NAWIGACJA GŁÓWNA (SIDEBAR) ---
-# =====================================================================
 with st.sidebar:
-    # --- NOWE: BEZPIECZNE DODAWANIE LOGO ---
     import os
     
-    # Pobieramy ścieżkę do folderu, w którym jest ten skrypt
     base_dir = os.path.dirname(__file__)
     logo_path = os.path.join(base_dir, "logo.png")
 
@@ -233,10 +222,9 @@ with st.sidebar:
             
         st.markdown("<hr style='border: none; border-top: 1px dashed rgba(255,255,255,0.1); margin: 15px 0;'>", unsafe_allow_html=True)
 
-    # --- KLUCZ API WPISANY NA SZTYWNO (Ukryty w interfejsie) ---
+    # --- KLUCZ API WPISANY NA SZTYWNO ---
     user_api_key = "b8aca90a6e292cd21be009ba58b2e73e"
 
-    # NAPRAWIONA RAMKA SYSTEM ONLINE (Usunięty zduplikowany div)
     st.markdown("""
 <div style="background: rgba(255,255,255,0.02); padding: 15px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.05); position: relative;">
 <div style="display: flex; align-items: center; margin-bottom: 10px;">
@@ -322,12 +310,7 @@ def calc_power(stats, mot_val, missing):
         final_power = 105 + (np.log(final_power - 104) * 4) 
     return round(np.clip(final_power, 40, 115), 1)
 
-# ... tutaj kończy się funkcja calc_power ...
-    return round(np.clip(final_power, 40, 115), 1)
-
-# === TUTAJ WKLEJASZ NOWY KOD ===
 def calculate_kelly(prob_pct, odds, bankroll=1000):
-    """Oblicza sugerowaną stawkę na podstawie przewagi matematycznej."""
     p = prob_pct / 100.0
     q = 1.0 - p
     b = float(odds) - 1.0
@@ -335,16 +318,12 @@ def calculate_kelly(prob_pct, odds, bankroll=1000):
     if b <= 0: return 0
     f = (b * p - q) / b
     
-    # Używamy "Fractional Kelly" (0.25), żeby nie zbankrutować przy jednej pomyłce
     safe_f = f * 0.25 
     stake = max(0, safe_f * bankroll)
-    return round(stake, 1) # Zwraca np. 42.5 jednostki
-# ===============================
+    return round(stake, 1)
 
 def save_bet_to_tracker(date, league, match, pick, prob, odds_key=None):
     file_name = "roi_tracker.csv"
-    
-    # Wyciągamy kurs wpisany przez Ciebie przed chwilą w okienko
     final_odds = st.session_state.get(odds_key, 1.85) if odds_key else 1.85
     
     new_data = pd.DataFrame([{
@@ -389,11 +368,9 @@ def auto_settle_bets():
             if " - " not in mecz: continue
             home_team, away_team = mecz.split(" - ", 1)
             
-            # Szukamy tego konkretnego meczu w naszej bazie CSV
             match_data = df_liga[(df_liga['HomeTeam'] == home_team) & (df_liga['AwayTeam'] == away_team)].copy()
             if match_data.empty: continue
             
-            # Sortujemy, żeby wziąć najnowsze starcie
             match_data['Date'] = pd.to_datetime(match_data['Date'], dayfirst=True, errors='coerce')
             match_data = match_data.sort_values('Date', ascending=False)
             najnowszy_mecz = match_data.iloc[0].fillna(0)
@@ -401,8 +378,6 @@ def auto_settle_bets():
             try:
                 bet_date = pd.to_datetime(data_kuponu).date()
                 match_date = pd.to_datetime(najnowszy_mecz['Date']).date()
-                # Dopuszczamy 1 dzień różnicy ze względu na strefy czasowe (API vs CSV)
-                # Jeśli różnica jest większa, znaczy, że strona football-data jeszcze nie wgrała wczorajszych wyników.
                 if abs((bet_date - match_date).days) > 1:
                     continue 
             except:
@@ -416,32 +391,27 @@ def auto_settle_bets():
             liczby = re.findall(r"[-+]?\d*\.\d+|\d+", typ)
             linia = float(liczby[0]) if liczby else 0
             
-            # Weryfikacja 1X2
             if "1X2" in typ:
                 if "(1)" in typ and ftr == 'H': wygrany = True
                 elif "(2)" in typ and ftr == 'A': wygrany = True
                 elif "(X)" in typ and ftr == 'D': wygrany = True
                 else: wygrany = False
                 
-            # Weryfikacja GOLI
             elif "gola" in typ:
                 gole = fthg + ftag
                 if "Powyżej" in typ: wygrany = gole > linia
                 elif "Poniżej" in typ: wygrany = gole < linia
                 
-            # Weryfikacja KARTEK (Żółte + Czerwone)
             elif "kartek" in typ:
                 kartki = najnowszy_mecz.get('HY', 0) + najnowszy_mecz.get('AY', 0) + najnowszy_mecz.get('HR', 0) + najnowszy_mecz.get('AR', 0)
                 if "Powyżej" in typ: wygrany = kartki > linia
                 elif "Poniżej" in typ: wygrany = kartki < linia
                 
-            # Weryfikacja ROŻNYCH
             elif "rożnych" in typ:
                 rozne = najnowszy_mecz.get('HC', 0) + najnowszy_mecz.get('AC', 0)
                 if "Powyżej" in typ: wygrany = rozne > linia
                 elif "Poniżej" in typ: wygrany = rozne < linia
 
-            # Zmiana statusu z Oczekującego na rozliczony
             if wygrany is True:
                 df_bets.at[i, 'Status'] = 'Wygrany'
                 df_bets.at[i, 'Zysk_Strata'] = (100 * row['Kurs']) - 100
@@ -467,7 +437,6 @@ def get_advanced_stats(team, side, mode, last_n=None):
         
     if len(t_data) == 0: return None
     
-    # TIME-DECAY (WAGA CZASU)
     if 'Date' in t_data.columns:
         t_data['Date'] = pd.to_datetime(t_data['Date'], dayfirst=True, errors='coerce')
         t_data = t_data.sort_values('Date', ascending=False)
@@ -489,7 +458,6 @@ def get_advanced_stats(team, side, mode, last_n=None):
     fouls, yellows, reds = w_avg('HF', 'AF'), w_avg('HY', 'AY'), w_avg('HR', 'AR')
     ht_gf = w_avg('HTHG', 'HTAG') if 'HTHG' in t_data.columns else gf/2
     
-    # WŁASNE xG (EXPECTED GOALS)
     xg_for = (gf * 0.4) + (shots_ot * 0.4) + (corners * 0.05)
     xg_against = (ga * 0.4) + (opp_shots_ot * 0.4) + (opp_corners * 0.05)
 
@@ -573,7 +541,6 @@ if menu_choice == "🎯 Centrum Analizy":
     with col_vs: st.markdown("<h1 style='text-align: center; margin-top: 25px; color: #ffcc00; text-shadow: 0 0 15px rgba(255, 204, 0, 0.5);'>🆚</h1>", unsafe_allow_html=True)
     with col_a: a_team = st.selectbox("✈️ DRUŻYNA GOŚCI", teams, index=1 if len(teams) > 1 else 0)
 
-    # NOWOŚĆ: Kontrola Osłabień Kadrowych
     st.markdown("<div style='margin-top: -10px; margin-bottom: 10px;'></div>", unsafe_allow_html=True)
     col_miss_h, col_miss_vs, col_miss_a = st.columns([4, 1, 4])
     with col_miss_h:
@@ -583,7 +550,7 @@ if menu_choice == "🎯 Centrum Analizy":
 
     st.markdown("<hr style='border: none; border-top: 1px solid rgba(255,255,255,0.05); margin: 20px 0;'>", unsafe_allow_html=True)
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🚀 ANALIZA PRO", "📊 STATYSTYKI AI", "📋 PREDYKCJE", "🟨 KARTKI", "⛳ ROŻNE"])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["🚀 ANALIZA PRO", "📊 STATYSTYKI AI", "📋 PREDYKCJE", "🟨 KARTKI", "⛳ ROŻNE", "🧪 LABORATORIUM PRO"])
 
     with tab1:
         st.header("🧠 AI Scenario Simulator & Analysis")
@@ -594,60 +561,6 @@ if menu_choice == "🎯 Centrum Analizy":
             st.markdown("### 🏟️ Kontekst Meczu i Motywacja (Smart System)")
             st.markdown("<p style='color: #9da5b1; font-size: 0.85rem;'>AI analizuje układ tabeli i punkty potrzebne do celu. Jeśli cel jest już osiągnięty, motywacja drastycznie spada.</p>", unsafe_allow_html=True)
             
-            def get_auto_motivation(team_name):
-                curr_df = df[df['Season'] == '2526'] if 'Season' in df.columns else df
-                stats = {}
-                for t in curr_df['HomeTeam'].unique():
-                    df_t = curr_df[(curr_df['HomeTeam']==t) | (curr_df['AwayTeam']==t)]
-                    pkt = 0
-                    for _, row in df_t.iterrows():
-                        if (row['HomeTeam'] == t and row['FTR'] == 'H') or (row['AwayTeam'] == t and row['FTR'] == 'A'): pkt += 3
-                        elif row['FTR'] == 'D': pkt += 1
-                    stats[t] = {'M': len(df_t), 'Pkt': pkt}
-                    
-                if team_name not in stats or stats[team_name]['M'] == 0: return "Normalna", 1.0, "Początek sezonu", "#ffcc00"
-                    
-                sorted_teams = sorted(stats.items(), key=lambda x: x[1]['Pkt'], reverse=True)
-                total_teams = len(sorted_teams)
-                rank = next((idx + 1 for idx, (t, _) in enumerate(sorted_teams) if t == team_name), 1)
-                matches_played, team_pts = stats[team_name]['M'], stats[team_name]['Pkt']
-                
-                league_rules = {
-                    "Premier League": {"max_m": 38, "cl": 5, "eur": 7, "rel": 18},
-                    "La Liga":        {"max_m": 38, "cl": 5, "eur": 7, "rel": 18},
-                    "Serie A":        {"max_m": 38, "cl": 4, "eur": 6, "rel": 18},
-                    "Bundesliga":     {"max_m": 34, "cl": 4, "eur": 6, "rel": 16},
-                    "Ligue 1":        {"max_m": 34, "cl": 4, "eur": 6, "rel": 16},
-                    "Liga Portugal":  {"max_m": 34, "cl": 2, "eur": 5, "rel": 16}
-                }
-                rules = league_rules.get(league_choice, {"max_m": 34, "cl": 3, "eur": 5, "rel": 16})
-                if matches_played < 10: return "Normalna", 1.0, "Spokojny początek sezonu", "#ffcc00"
-
-                def get_pts_at(r):
-                    if total_teams >= r: return sorted_teams[r - 1][1]['Pkt']
-                    elif total_teams > 0: return sorted_teams[-1][1]['Pkt']
-                    return 0
-
-                pts_1st, pts_2nd, pts_cl, pts_eur, pts_safe = get_pts_at(1), get_pts_at(2), get_pts_at(rules["cl"]), get_pts_at(rules["eur"]), get_pts_at(rules["rel"] - 1)
-                max_pts_left = (rules["max_m"] - matches_played) * 3
-
-                if matches_played >= rules["max_m"] - 10:
-                    # SMART MOTIVATION: Cel już osiągnięty lub szanse stracone
-                    if team_pts + max_pts_left < pts_safe: return "Minimalna", 0.75, "Pewny spadek (Rozbicie zespołu)", "#9da5b1"
-                    if rank == 1 and (team_pts - pts_2nd) > max_pts_left: return "Zrelaksowana", 0.85, "Mistrzostwo zapewnione (Rezerwy)", "#9da5b1"
-                    if team_pts >= pts_safe and team_pts + max_pts_left < get_pts_at(rules["eur"]): return "Wakacyjna", 0.85, "Utrzymanie pewne, o nic nie grają", "#9da5b1"
-                    
-                    if team_pts >= pts_1st - 6 and rank <= 3: return "Mecz o życie!", 1.3, "Walka o Mistrzostwo!", "#00ff88"
-                    elif team_pts >= pts_cl - 5 and rank <= rules["cl"] + 2: return "Wysoka", 1.2, "Walka o Ligę Mistrzów", "#00d4ff"
-                    elif team_pts >= pts_eur - 5 and rank <= rules["eur"] + 2: return "Wysoka", 1.15, "Pościg za pucharami", "#00ff88"
-                    elif team_pts <= pts_safe + 5: return "Mecz o życie!", 1.35, "Desperacja (Utrzymanie)", "#ff4b4b"
-                    else: return "Normalna", 1.0, "Środek tabeli (Brak presji)", "#ffcc00"
-                else:
-                    if rank <= rules["cl"]: return "Wysoka", 1.15, "Strefa Ligi Mistrzów", "#00d4ff"
-                    elif rank <= rules["eur"]: return "Wysoka", 1.1, "Strefa pucharowa", "#00ff88"
-                    elif rank >= rules["rel"]: return "Wysoka", 1.15, "Strefa spadkowa", "#ff4b4b"
-                    else: return "Normalna", 1.0, "Bezpieczny środek", "#ffcc00"
-
             mot_h_label, mot_h_val, mot_h_desc, mot_h_col = get_auto_motivation(h_team)
             mot_a_label, mot_a_val, mot_a_desc, mot_a_col = get_auto_motivation(a_team)
             
@@ -656,23 +569,6 @@ if menu_choice == "🎯 Centrum Analizy":
                 st.markdown(f"""<div style="background: rgba(255,255,255,0.02); border-left: 4px solid {mot_h_col}; padding: 12px 15px; border-radius: 6px; margin-bottom: 20px;"><div style="font-size: 0.75rem; color: #9da5b1; text-transform: uppercase;">Kontekst: {h_team}</div><div style="font-size: 1.1rem; font-weight: bold; color: {mot_h_col};">{mot_h_label}</div><div style="font-size: 0.85rem; margin-top: 3px; color: white;">{mot_h_desc}</div></div>""", unsafe_allow_html=True)
             with c_mot2:
                 st.markdown(f"""<div style="background: rgba(255,255,255,0.02); border-left: 4px solid {mot_a_col}; padding: 12px 15px; border-radius: 6px; margin-bottom: 20px;"><div style="font-size: 0.75rem; color: #9da5b1; text-transform: uppercase;">Kontekst: {a_team}</div><div style="font-size: 1.1rem; font-weight: bold; color: {mot_a_col};">{mot_a_label}</div><div style="font-size: 0.85rem; margin-top: 3px; color: white;">{mot_a_desc}</div></div>""", unsafe_allow_html=True)
-
-            def calc_power(stats, mot_val, missing):
-                killer_score = stats['killer'] / 10.0
-                team_rating = (stats['dom'] * 0.3) + (killer_score * 0.35) + (stats['safety'] * 0.35)
-                
-                raw_power = (team_rating / 5.5) * 100 
-                motivated_power = raw_power * mot_val
-                # OSŁABIENIA: Każdy brak kluczowego gracza to spadek o ok 5%
-                absence_penalty = 1.0 - (missing * 0.05) 
-                
-                final_power = motivated_power * absence_penalty
-                
-                # CAPPING: Logarytmiczne spłaszczenie (żeby nie było cyborgów po 140%)
-                if final_power > 105:
-                    final_power = 105 + (np.log(final_power - 104) * 4) 
-                    
-                return round(np.clip(final_power, 40, 115), 1)
 
             auto_h_power, auto_a_power = calc_power(h_stats, mot_h_val, h_missing), calc_power(a_stats, mot_a_val, a_missing)
             h_adj, a_adj = auto_h_power, auto_a_power
@@ -687,9 +583,6 @@ if menu_choice == "🎯 Centrum Analizy":
                 st.markdown(f"""<div style="background: rgba(255, 75, 75, 0.05); border: 1px dashed #ff4b4b; border-radius: 12px; padding: 15px; text-align: center;"><div style="color: #9da5b1; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px;">Algorytm wyliczył moc: <b>{a_team}</b></div><div style="color: #ff4b4b; font-size: 2.2rem; font-weight: 900;">{auto_a_power}%</div></div>""", unsafe_allow_html=True)
             st.write("")
             
-            # =====================================================================
-            # --- SUPER-MODEL: xG + ELO + ZAAWANSOWANY DIXON-COLES ---
-            # =====================================================================
             base_l_h = (h_stats['gf'] + a_stats['ga']) / 2.0
             base_l_a = (a_stats['gf'] + h_stats['ga']) / 2.0
             
@@ -701,17 +594,13 @@ if menu_choice == "🎯 Centrum Analizy":
             
             raw_win, raw_draw, raw_loss = np.mean(s_h > s_a), np.mean(s_h == s_a), np.mean(s_h < s_a)
             
-            # ZAAWANSOWANA KOREKTA NA REMISY (Dixon-Coles Upgrade)
             prob_00 = np.mean((s_h == 0) & (s_a == 0))
             prob_11 = np.mean((s_h == 1) & (s_a == 1))
             
-            # Jeśli mecz jest zacięty i underowy, remis jest dużo bardziej prawdopodobny
             dc_boost_draw = 0.04 + (prob_00 * 0.2) + (prob_11 * 0.2)
             if abs(h_adj - a_adj) < 10: dc_boost_draw += 0.05
                 
             chaos_factor = (h_stats['chaos'] + a_stats['chaos']) / 20.0 
-            
-            # Duży chaos zmniejsza szansę na ułożony remis
             adj_draw = raw_draw + dc_boost_draw - (chaos_factor * 0.03) 
             
             if raw_win > raw_loss:
@@ -724,7 +613,6 @@ if menu_choice == "🎯 Centrum Analizy":
             adj_win, adj_draw, adj_loss = max(0, adj_win), max(0, adj_draw), max(0, adj_loss)
             total = adj_win + adj_draw + adj_loss
             win, draw, loss = adj_win/total, adj_draw/total, adj_loss/total
-            # =====================================================================
 
             st.write("")
             st.markdown("### 🎯 Przewidywane Prawdopodobieństwo (1X2)")
@@ -747,7 +635,6 @@ if menu_choice == "🎯 Centrum Analizy":
             total_goals = s_h + s_a
             o15, o25, o35 = np.mean(total_goals > 1.5), np.mean(total_goals > 2.5), np.mean(total_goals > 3.5)
 
-            # REALISTYCZNE HT (Ok. 43% bramek wpada w 1. połowie)
             l_h_ht = l_h * 0.43
             l_a_ht = l_a * 0.43
             s_h_ht, s_a_ht = np.random.poisson(max(0.1, l_h_ht), 8000), np.random.poisson(max(0.1, l_a_ht), 8000)
@@ -774,7 +661,7 @@ if menu_choice == "🎯 Centrum Analizy":
             
             st.markdown("#### 🎯 Najbardziej Prawdopodobne Wyniki Meczu")
             results = []
-            for h_g in range(6): # Szukamy wyników od 0 do 5 bramek
+            for h_g in range(6): 
                 for a_g in range(6):
                     prob = np.mean((s_h == h_g) & (s_a == a_g)) * 100
                     if prob > 1.0: results.append((h_g, a_g, prob))
@@ -793,7 +680,6 @@ if menu_choice == "🎯 Centrum Analizy":
             st.markdown("<h3 style='text-align: center; color: #00ff88;'>⚖️ Zaawansowany Value Bet Finder (1X2)</h3>", unsafe_allow_html=True)
             st.markdown("<p style='text-align: center; color: #9da5b1;'>Teraz z uwzględnieniem matematycznego sufitu dla faworytów. System łapie prawdziwe różnice w kursach.</p>", unsafe_allow_html=True)
 
-            # INTEGRACJA THE ODDS API DLA KURSÓW
             fetched_odds = fetch_live_odds(user_api_key, league_choice, h_team, a_team)
             default_1, default_x, default_2 = 2.50, 3.20, 2.80
             provider_text = "Brak API / Wpisz ręcznie"
@@ -945,7 +831,6 @@ if menu_choice == "🎯 Centrum Analizy":
                 if o35 > 0.40: expert_tips.append(("Powyżej 3.5 gola", o35))
                 if btts_ht > 0.25: expert_tips.append(("BTTS w 1. połowie", btts_ht))
                 
-                # ZABEZPIECZENIE: Sprawdzamy czy AI znalazło jakikolwiek prawdopodobny wynik
                 if len(results) > 0:
                     expert_tips.append((f"Wynik: {results[0][0]}-{results[0][1]}", results[0][2]/100))
 
@@ -1113,6 +998,62 @@ if menu_choice == "🎯 Centrum Analizy":
                     h2h_table += f"<tr><td>{d_str}</td><td>{row['HomeTeam']} - {row['AwayTeam']}</td><td style='font-weight:bold;'>{total_c}</td><td style='color:#00b8ff;'>{hc} : {ac}</td></tr>"
                 st.markdown(h2h_table + "</tbody></table>", unsafe_allow_html=True)
 
+    with tab6:
+        st.header("🧪 Laboratorium PRO - Symulator xG")
+        st.markdown("Wpisz własne przewidywania Expected Goals (xG) i zobacz matematyczną matrycę wyników.")
+
+        # --- SUWAKI DO RĘCZNEGO USTAWIANIA xG ---
+        col1, col2 = st.columns(2)
+        with col1:
+            xg_home = st.slider("⚽ Gospdarze (Przewidywane xG)", min_value=0.1, max_value=4.0, value=1.5, step=0.1)
+        with col2:
+            xg_away = st.slider("⚽ Goście (Przewidywane xG)", min_value=0.1, max_value=4.0, value=1.2, step=0.1)
+
+        st.divider()
+
+        # --- KALKULATOR POISSONA ---
+        # (Pamiętaj, że na samej górze pliku gui.py musi być: import math)
+        import math 
+
+        def calculate_poisson(lambda_val, k):
+            return ((lambda_val ** k) * math.exp(-lambda_val)) / math.factorial(k)
+
+        # Liczymy szanse na wygraną, remis i przegraną
+        home_win_prob = 0
+        draw_prob = 0
+        away_win_prob = 0
+
+        # Generujemy matrycę wyników (od 0 do 5 goli)
+        matrix = []
+        for i in range(6):  # Gole gospodarzy
+            row = []
+            for j in range(6):  # Gole gości
+                prob = calculate_poisson(xg_home, i) * calculate_poisson(xg_away, j)
+                row.append(prob)
+                if i > j:
+                    home_win_prob += prob
+                elif i == j:
+                    draw_prob += prob
+                else:
+                    away_win_prob += prob
+            matrix.append(row)
+
+        # --- WYŚWIETLANIE GŁÓWNYCH SZANS ---
+        st.subheader("📊 Główne rynki (1X2)")
+        col_p1, col_px, col_p2 = st.columns(3)
+        
+        # Zabezpieczenie przed dzieleniem przez 0
+        fair_home = 1/home_win_prob if home_win_prob > 0 else 0
+        fair_draw = 1/draw_prob if draw_prob > 0 else 0
+        fair_away = 1/away_win_prob if away_win_prob > 0 else 0
+
+        col_p1.metric("Gospodarze wygrają", f"{home_win_prob*100:.1f}%", f"Kurs fair: {fair_home:.2f}")
+        col_px.metric("Remis", f"{draw_prob*100:.1f}%", f"Kurs fair: {fair_draw:.2f}")
+        col_p2.metric("Goście wygrają", f"{away_win_prob*100:.1f}%", f"Kurs fair: {fair_away:.2f}")
+
+        st.info("💡 Porównaj 'Kurs fair' z tym, co daje bukmacher. Jeśli kurs buka jest WYŻSZY niż nasz, znalazłeś Value Bet!")
+
+
 # =====================================================================
 # --- EKRAN 2: ZŁOTE TYPY AI (Z SUWAKIEM DATY I OVER/UNDER) ---
 # =====================================================================
@@ -1136,16 +1077,13 @@ elif menu_choice == "🔮 Złote Typy AI":
     target_date = (pd.Timestamp.now() + pd.Timedelta(days=selected_day_offset)).strftime('%Y-%m-%d')
     st.write("")
 
-    # ZMIANA 1: Guzik zapisuje w pamięci, że chcesz odpalić skaner dla tej daty
     if st.button(f"🚀 Uruchom Globalny Skaner AI na: {days_map[selected_day_offset]}", use_container_width=True):
         st.session_state['run_scanner'] = target_date
 
-    # ZMIANA 2: Sprawdzamy, czy w pamięci skaner jest włączony (dzięki temu po kliknięciu "Graj" ekran nie zniknie!)
     if st.session_state.get('run_scanner') == target_date:
         if not user_api_key or user_api_key == "TWÓJ_NOWY_KLUCZ_TUTAJ":
             st.error("⚠️ Brak klucza API! System potrzebuje klucza The Odds API, aby pobrać dzisiejszy terminarz.")
         else:
-            # ZMIANA 3: Robimy te długie obliczenia tylko jeśli NIE MA ich jeszcze w pamięci
             if 'skan_wyniki' not in st.session_state or st.session_state.get('skan_data') != target_date:
                 with st.spinner(f'🌍 Globalny Skaner pracuje! Przeszukuję wszystkie ligi na {target_date}...'):
                     analyzed_matches = []
@@ -1265,8 +1203,8 @@ elif menu_choice == "🔮 Złote Typy AI":
                                 'exp_goals_val': real_exp_goals,
                                 'card_val': exp_cards,
                                 'corner_val': exp_corners,
-                                'api_data': m,     # <--- Zapisujemy surowe dane z API
-                                'h_api': h_api,    # <--- Zapisujemy nazwy z API do szukania kursów
+                                'api_data': m,
+                                'h_api': h_api,
                                 'a_api': a_api
                             })
                     
@@ -1301,8 +1239,7 @@ elif menu_choice == "🔮 Złote Typy AI":
                             m['master_category'] = best_signal[2]
                             m['master_color'] = best_signal[3]
                             
-                            # --- WYCIĄGANIE PRAWDZIWYCH KURSÓW Z THE ODDS API ---
-                            m['master_odds'] = 1.85 # Domyślny kurs dla kartek/rożnych
+                            m['master_odds'] = 1.85
                             try:
                                 for b in m['api_data'].get('bookmakers', []):
                                     for market in b.get('markets', []):
@@ -1330,7 +1267,6 @@ elif menu_choice == "🔮 Złote Typy AI":
                     st.session_state['skan_wyniki'] = top_matches
                     st.session_state['skan_data'] = target_date
 
-            # ---- WYŚWIETLAMY ZAPISANE WYNIKI Z PAMIĘCI ----
             top_matches = st.session_state.get('skan_wyniki', [])
 
             st.write("")
@@ -1341,7 +1277,6 @@ elif menu_choice == "🔮 Złote Typy AI":
                 st.info("⚠️ Algorytm uznał, że dzisiejsze mecze są zbyt ryzykowne na żaden pewny typ. Wróć jutro!")
             else:
                 for idx, m in enumerate(top_matches[:5]): 
-                    # KARTA MECZU PRO
                     st.markdown(f"""
                     <div class="premium-card">
                         <div style="display: flex; justify-content: space-between; align-items: flex-start;">
@@ -1367,17 +1302,13 @@ elif menu_choice == "🔮 Złote Typy AI":
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    # PANEL AKCJI (Kursy i Zapis) - Zaraz pod kartą
                     col_info, col_odds, col_btn = st.columns([1.5, 1, 1.5])
-                    
                     odds_input_key = f"odds_input_{idx}_{m['match'].replace(' ', '')}"
                     
                     with col_info:
                         st.markdown("<p style='color: #9da5b1; font-size: 0.8rem; margin-top: 10px;'>Wpisz kurs i zatwierdź zakład, aby AI zaczęło go śledzić.</p>", unsafe_allow_html=True)
-                    
                     with col_odds:
                         st.number_input("Kurs u buka:", min_value=1.01, value=1.85, step=0.05, format="%.2f", key=odds_input_key)
-                        
                     with col_btn:
                         st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
                         st.button(
@@ -1412,7 +1343,6 @@ elif menu_choice == "📈 Dziennik Zysków (ROI)":
             st.stop()
         
         if not df_bets.empty:
-            # --- OBLICZENIA STATYSTYK ---
             rozliczone = df_bets[df_bets['Status'].isin(['Wygrany', 'Przegrany'])]
             suma_stawek = len(rozliczone) * 100 
             zysk_strata = 0
@@ -1428,7 +1358,6 @@ elif menu_choice == "📈 Dziennik Zysków (ROI)":
             yield_pct = (zysk_strata / suma_stawek * 100) if suma_stawek > 0 else 0
             win_rate = (wygrane / len(rozliczone) * 100) if len(rozliczone) > 0 else 0
             
-            # --- NOWOCZESNE KAFELKI KPI (PREMIUM) ---
             st.markdown(f"""
             <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 25px;">
                 <div class="premium-card" style="text-align: center; padding: 15px;">
@@ -1450,7 +1379,6 @@ elif menu_choice == "📈 Dziennik Zysków (ROI)":
             </div>
             """, unsafe_allow_html=True)
 
-            # --- WYKRES TRENDU ---
             if not rozliczone.empty:
                 rozliczone = rozliczone.copy()
                 rozliczone['Data_DT'] = pd.to_datetime(rozliczone['Data'])
@@ -1462,7 +1390,6 @@ elif menu_choice == "📈 Dziennik Zysków (ROI)":
                 fig_equity.update_layout(title="📈 TREND KAPITAŁU (JEDNOSTKI)", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='white'), margin=dict(l=0, r=0, t=40, b=0), height=250, xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.05)'))
                 st.plotly_chart(fig_equity, use_container_width=True)
 
-            # --- PRZYCISKI AKCJI (ŁADNIEJSZE) ---
             c_auto, c_exp = st.columns([1, 1])
             with c_auto:
                 if st.button("🔄 Uruchom Auto-Weryfikację AI", use_container_width=True, type="secondary"):
@@ -1476,7 +1403,6 @@ elif menu_choice == "📈 Dziennik Zysków (ROI)":
                 csv = df_bets.to_csv(index=False).encode('utf-8')
                 st.download_button(label="📥 Pobierz kopię Dziennika (CSV)", data=csv, file_name=f"moje_roi.csv", mime='text/csv', use_container_width=True)
 
-            # --- EDYTOR ZAKŁADÓW ---
             st.write("")
             st.markdown("<div class='premium-card' style='padding: 20px;'> <h3 style='margin-top: 0; color: white;'>📝 Edytor Zakładów na Żywo</h3>", unsafe_allow_html=True)
             edited_df = st.data_editor(
