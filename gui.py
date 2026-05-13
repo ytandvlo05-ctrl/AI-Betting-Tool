@@ -1036,7 +1036,7 @@ elif menu_choice == "🔮 Złote Typy AI":
                         def dopasuj(api_nazwa, lista_csv):
                             # Funkcja pomocnicza do czyszczenia nazw z myślników i kropek
                             def clean_name(txt):
-                                return txt.lower().replace("-", " ").replace(".", "").strip()
+                                return txt.lower().replace("-", " ").replace(".", "").replace("é", "e").replace("á", "a").replace("í", "i").replace("ó", "o").replace("ú", "u").replace("ñ", "n").strip()
                             
                             n = clean_name(api_nazwa)
                             
@@ -1053,13 +1053,26 @@ elif menu_choice == "🔮 Złote Typy AI":
                                 for t in lista_csv:
                                     if "paris fc" in clean_name(t): return t
 
-                            # --- 3. SŁOWNIK ANGIELSKI ---
+                            # --- 3. SŁOWNIK TŁUMACZEŃ NAZW ---
                             slownik = {
+                                # Angielskie
                                 "manchester city": "Man City", "manchester united": "Man United",
                                 "wolverhampton": "Wolves", "nottingham": "Nott'm Forest",
                                 "sheffield": "Sheff Utd", "newcastle": "Newcastle",
                                 "west ham": "West Ham", "tottenham": "Tottenham",
-                                "aston villa": "Aston Villa", "crystal palace": "Crystal Palace"
+                                "aston villa": "Aston Villa", "crystal palace": "Crystal Palace",
+                                
+                                # Hiszpańskie (Rozwiązanie Twojego problemu)
+                                "alavés": "Alaves",
+                                "alaves": "Alaves",
+                                "athletic bilbao": "Ath Bilbao",
+                                "athletic club": "Ath Bilbao",
+                                "espanyol": "Espanol",
+                                "español": "Espanol",
+                                "atletico madrid": "Ath Madrid",
+                                "celta vigo": "Celta",
+                                "real betis": "Betis",
+                                "real sociedad": "Sociedad"
                             }
                             for klucz, wartosc in slownik.items():
                                 if klucz in n:
