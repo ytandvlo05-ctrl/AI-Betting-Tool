@@ -245,7 +245,7 @@ with st.sidebar:
 </div>
 <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: #9da5b1; margin-bottom: 5px;">
 <span>Wersja Silnika:</span>
-<span style="color: #ffcc00;">v5.0 PRO (xG + Time Decay)</span>
+<span style="color: #ffcc00;">v5.0 PRO</span>
 </div>
 <style>
 @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(0, 255, 136, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(0, 255, 136, 0); } 100% { box-shadow: 0 0 0 0 rgba(0, 255, 136, 0); } }
