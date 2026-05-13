@@ -39,23 +39,91 @@ elif st.session_state["authentication_status"] is None:
     st.warning('Wprowadź dane logowania')
     st.stop()
 
-# --- CUSTOM CSS: STYLIZACJA DASHBOARDU I MENU ---
+# --- CUSTOM CSS: STYLIZACJA DASHBOARDU I MENU (CYBERPUNK AI NEBULA) ---
 st.markdown("""
 <style>
-    /* Klasa dla karty premium */
+    /* Definicja zmiennych kolorystycznych dla spójności */
+    :root {
+        --bg-dark: #0d1117;
+        --ai-green: #00ff88;
+        --ai-blue: #00b8ff;
+        --ai-purple: #a020f0;
+        --text-grey: #9da5b1;
+        --border-light: rgba(255, 255, 255, 0.08);
+        --glass-bg: rgba(13, 17, 23, 0.4); /* Przyciemnione szkło */
+    }
+
+    /* 1. ANIMOWANE TŁO: CYBERPUNK AI NEBULA DRIFT */
+    [data-testid="stAppViewContainer"] {
+        background-color: var(--bg-dark) !important;
+        background-image:
+            radial-gradient(at 10% 10%, rgba(0, 255, 136, 0.12) 0%, rgba(0,0,0,0) 40%),
+            radial-gradient(at 90% 10%, rgba(160, 32, 240, 0.1) 0%, rgba(0,0,0,0) 40%),
+            radial-gradient(at 90% 90%, rgba(0, 184, 255, 0.12) 0%, rgba(0,0,0,0) 40%),
+            radial-gradient(at 10% 90%, rgba(255, 75, 75, 0.06) 0%, rgba(0,0,0,0) 40%),
+            linear-gradient(135deg, #0d1117 0%, #06080b 100%) !important;
+        background-attachment: fixed !important;
+        background-size: 200% 200% !important;
+        animation: nebula-drift 20s ease-in-out infinite !important;
+    }
+
+    @keyframes nebula-drift {
+        0%, 100% { background-position: 0% 0%; }
+        25% { background-position: 100% 0%; }
+        50% { background-position: 100% 100%; }
+        75% { background-position: 0% 100%; }
+    }
+
+    /* 2. LEKKIE PRZYCIEMNIENIE SIDEBARA (DLA KONTRASTU) */
+    [data-testid="stSidebar"] {
+        background-color: rgba(10, 12, 16, 0.8) !important;
+        backdrop-filter: blur(12px);
+        border-right: 1px solid var(--border-light) !important;
+    }
+
+    /* 3. STYLIZACJA TABS (ZAKŁADEK) DLA SPÓJNOŚCI */
+    button[data-baseweb="tab"] {
+        color: var(--text-grey) !important;
+        border-bottom: 2px solid transparent !important;
+        background-color: transparent !important;
+        padding: 10px 20px !important;
+    }
+    button[data-baseweb="tab"][aria-selected="true"] {
+        color: var(--ai-green) !important;
+        border-bottom-color: var(--ai-green) !important;
+        font-weight: bold !important;
+    }
+
+    /* 4. KLASA DLA KARTY PREMIUM: EFEKT CIEMNEGO SZKŁA (GLASSMORPHISM) */
     .premium-card {
-        background: linear-gradient(145deg, #1e212b, #11131a);
-        border-radius: 15px;
-        padding: 20px;
-        margin-bottom: 20px;
-        border: 1px solid rgba(255,255,255,0.05);
-        box-shadow: 0 10px 20px rgba(0,0,0,0.4);
-        transition: transform 0.2s ease;
+        background: var(--glass-bg) !important;
+        backdrop-filter: blur(25px) !important;
+        -webkit-backdrop-filter: blur(25px) !important;
+        border-radius: 18px !important;
+        padding: 25px !important;
+        margin-bottom: 20px !important;
+        border: 1px solid var(--border-light) !important;
+        box-shadow: 
+            0 15px 35px 0 rgba(0, 0, 0, 0.6) !important,
+            inset 0 0 15px rgba(255, 255, 255, 0.02) !important; /* Lekki blask wewnętrzny */
+        
+        /* Wykorzystujemycubic-bezier dla bardziej naturalnej animacji */
+        transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1) !important;
     }
+
     .premium-card:hover {
-        transform: translateY(-3px);
-        border: 1px solid rgba(0, 255, 136, 0.2);
+        /* Unoszenie i delikatne powiększenie */
+        transform: translateY(-8px) scale(1.02) !important;
+        border: 1px solid rgba(0, 255, 136, 0.5) !important;
+        background: rgba(255, 255, 255, 0.01) !important; /* Lekkie rozjaśnienie dark glass */
+        
+        /* Neonowa poświata na hover */
+        box-shadow: 
+            0 25px 60px -10px rgba(0, 255, 136, 0.25) !important,
+            inset 0 0 10px rgba(0, 255, 136, 0.1) !important;
     }
+    
+    /* Content specific in cards, retained but cleaned */
     .league-tag {
         color: #00b8ff;
         font-size: 0.75rem;
@@ -71,11 +139,12 @@ st.markdown("""
         margin-bottom: 12px;
     }
     .pick-box {
-        background: rgba(255,255,255,0.03);
+        background: rgba(255,255,255,0.02);
         border-radius: 10px;
         padding: 15px;
         text-align: center;
         border-left: 5px solid;
+        box-shadow: inset 0 0 10px rgba(0,0,0,0.2);
     }
     .prob-text {
         font-size: 0.85rem;
@@ -226,7 +295,7 @@ with st.sidebar:
     user_api_key = "b8aca90a6e292cd21be009ba58b2e73e"
 
     st.markdown("""
-<div style="background: rgba(255,255,255,0.02); padding: 15px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.05); position: relative;">
+<div class="premium-card" style="padding: 15px; position: relative;">
 <div style="display: flex; align-items: center; margin-bottom: 10px;">
 <div style="width: 10px; height: 10px; border-radius: 50%; background: #00ff88; margin-right: 10px; box-shadow: 0 0 8px #00ff88; animation: pulse 2s infinite;"></div>
 <span style="color: white; font-size: 0.85rem; font-weight: bold;">System Online</span>
@@ -566,9 +635,9 @@ if menu_choice == "🎯 Centrum Analizy":
             
             c_mot1, c_mot2 = st.columns(2)
             with c_mot1:
-                st.markdown(f"""<div style="background: rgba(255,255,255,0.02); border-left: 4px solid {mot_h_col}; padding: 12px 15px; border-radius: 6px; margin-bottom: 20px;"><div style="font-size: 0.75rem; color: #9da5b1; text-transform: uppercase;">Kontekst: {h_team}</div><div style="font-size: 1.1rem; font-weight: bold; color: {mot_h_col};">{mot_h_label}</div><div style="font-size: 0.85rem; margin-top: 3px; color: white;">{mot_h_desc}</div></div>""", unsafe_allow_html=True)
+                st.markdown(f"""<div class="premium-card" style="border-left: 4px solid {mot_h_col} !important;"><div style="font-size: 0.75rem; color: #9da5b1; text-transform: uppercase;">Kontekst: {h_team}</div><div style="font-size: 1.1rem; font-weight: bold; color: {mot_h_col};">{mot_h_label}</div><div style="font-size: 0.85rem; margin-top: 3px; color: white;">{mot_h_desc}</div></div>""", unsafe_allow_html=True)
             with c_mot2:
-                st.markdown(f"""<div style="background: rgba(255,255,255,0.02); border-left: 4px solid {mot_a_col}; padding: 12px 15px; border-radius: 6px; margin-bottom: 20px;"><div style="font-size: 0.75rem; color: #9da5b1; text-transform: uppercase;">Kontekst: {a_team}</div><div style="font-size: 1.1rem; font-weight: bold; color: {mot_a_col};">{mot_a_label}</div><div style="font-size: 0.85rem; margin-top: 3px; color: white;">{mot_a_desc}</div></div>""", unsafe_allow_html=True)
+                st.markdown(f"""<div class="premium-card" style="border-left: 4px solid {mot_a_col} !important;"><div style="font-size: 0.75rem; color: #9da5b1; text-transform: uppercase;">Kontekst: {a_team}</div><div style="font-size: 1.1rem; font-weight: bold; color: {mot_a_col};">{mot_a_label}</div><div style="font-size: 0.85rem; margin-top: 3px; color: white;">{mot_a_desc}</div></div>""", unsafe_allow_html=True)
 
             auto_h_power, auto_a_power = calc_power(h_stats, mot_h_val, h_missing), calc_power(a_stats, mot_a_val, a_missing)
             h_adj, a_adj = auto_h_power, auto_a_power
@@ -578,9 +647,9 @@ if menu_choice == "🎯 Centrum Analizy":
             
             c_pow1, c_pow2 = st.columns(2)
             with c_pow1:
-                st.markdown(f"""<div style="background: rgba(0, 255, 136, 0.05); border: 1px dashed #00ff88; border-radius: 12px; padding: 15px; text-align: center;"><div style="color: #9da5b1; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px;">Algorytm wyliczył moc: <b>{h_team}</b></div><div style="color: #00ff88; font-size: 2.2rem; font-weight: 900;">{auto_h_power}%</div></div>""", unsafe_allow_html=True)
+                st.markdown(f"""<div class="premium-card" style="text-align: center;"><div style="color: #9da5b1; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px;">Algorytm wyliczył moc: <b>{h_team}</b></div><div style="color: #00ff88; font-size: 2.2rem; font-weight: 900;">{auto_h_power}%</div></div>""", unsafe_allow_html=True)
             with c_pow2:
-                st.markdown(f"""<div style="background: rgba(255, 75, 75, 0.05); border: 1px dashed #ff4b4b; border-radius: 12px; padding: 15px; text-align: center;"><div style="color: #9da5b1; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px;">Algorytm wyliczył moc: <b>{a_team}</b></div><div style="color: #ff4b4b; font-size: 2.2rem; font-weight: 900;">{auto_a_power}%</div></div>""", unsafe_allow_html=True)
+                st.markdown(f"""<div class="premium-card" style="text-align: center;"><div style="color: #9da5b1; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px;">Algorytm wyliczył moc: <b>{a_team}</b></div><div style="color: #ff4b4b; font-size: 2.2rem; font-weight: 900;">{auto_a_power}%</div></div>""", unsafe_allow_html=True)
             st.write("")
             
             base_l_h = (h_stats['gf'] + a_stats['ga']) / 2.0
@@ -615,20 +684,23 @@ if menu_choice == "🎯 Centrum Analizy":
             win, draw, loss = adj_win/total, adj_draw/total, adj_loss/total
 
             st.write("")
-            st.markdown("### 🎯 Przewidywane Prawdopodobieństwo (1X2)")
+            st.write(f"### 🎯 Prawdopodobieństwo 1X2")
+            c1, c2, c3 = st.columns(3)
             p_win, p_draw, p_loss = win * 100, draw * 100, loss * 100
-            
-            st.markdown(f"""
-            <div style="display: flex; gap: 15px; margin-bottom: 15px;">
-                <div style="flex: 1; background: rgba(0, 255, 136, 0.05); border: 1px solid rgba(0, 255, 136, 0.3); border-radius: 12px; padding: 15px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.2);"><div style="color: #9da5b1; font-size: 0.85rem; text-transform: uppercase; font-weight: bold; letter-spacing: 1px;">🏠 1 ({h_team})</div><div style="color: #00ff88; font-size: 2.2rem; font-weight: 900; margin-top: 5px;">{p_win:.1f}%</div></div>
-                <div style="flex: 1; background: rgba(255, 204, 0, 0.05); border: 1px solid rgba(255, 204, 0, 0.3); border-radius: 12px; padding: 15px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.2);"><div style="color: #9da5b1; font-size: 0.85rem; text-transform: uppercase; font-weight: bold; letter-spacing: 1px;">⚖️ X (REMIS)</div><div style="color: #ffcc00; font-size: 2.2rem; font-weight: 900; margin-top: 5px;">{p_draw:.1f}%</div></div>
-                <div style="flex: 1; background: rgba(255, 75, 75, 0.05); border: 1px solid rgba(255, 75, 75, 0.3); border-radius: 12px; padding: 15px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.2);"><div style="color: #9da5b1; font-size: 0.85rem; text-transform: uppercase; font-weight: bold; letter-spacing: 1px;">✈️ 2 ({a_team})</div><div style="color: #ff4b4b; font-size: 2.2rem; font-weight: 900; margin-top: 5px;">{p_loss:.1f}%</div></div>
-            </div>
-            <div style="width: 100%; height: 12px; border-radius: 6px; display: flex; overflow: hidden; background-color: #2b2f3b; box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);"><div style="width: {p_win}%; background-color: #00ff88;"></div><div style="width: {p_draw}%; background-color: #ffcc00;"></div><div style="width: {p_loss}%; background-color: #ff4b4b;"></div></div>
-            <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 0.75rem; color: #9da5b1; margin-bottom: 20px;"><span>Szansa Gospodarza</span><span>Szansa Remisu</span><span>Szansa Gościa</span></div>
-            """, unsafe_allow_html=True)
-
+            with c1:
+                st.write(f"🏠 **{h_team}**")
+                st.progress(win)
+                st.markdown(f"<h2 style='color:#00ff88; margin-top:-10px;'>{p_win:.1f}%</h2>", unsafe_allow_html=True)
+            with c2:
+                st.write("⚖️ **REMIS**")
+                st.progress(draw)
+                st.markdown(f"<h2 style='color:#ffcc00; margin-top:-10px;'>{p_draw:.1f}%</h2>", unsafe_allow_html=True)
+            with c3:
+                st.write(f"✈️ **{a_team}**")
+                st.progress(loss)
+                st.markdown(f"<h2 style='color:#ff4b4b; margin-top:-10px;'>{p_loss:.1f}%</h2>", unsafe_allow_html=True)
             st.write("")
+
             st.markdown("### 📊 Rynki Bramkowe i Połowiczne")
             
             btts_yes = np.clip(np.mean((s_h > 0) & (s_a > 0)) * 1.05, 0, 1)
@@ -654,9 +726,9 @@ if menu_choice == "🎯 Centrum Analizy":
 
             col_b1, col_b2 = st.columns(2)
             with col_b1:
-                st.markdown(f"""<div style="background: linear-gradient(180deg, rgba(30,33,43,1) 0%, rgba(22,25,34,1) 100%); padding: 15px; border-radius: 12px; border: 1px solid rgba(0, 255, 136, 0.1);"><h4 style="color: #9da5b1; text-align: center; margin-top: 0; margin-bottom: 15px; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 1px;">⚽ Gole w meczu (FT)</h4>{make_row("Obie strzelą (BTTS)", btts_yes)}{make_row("Powyżej 1.5 gola", o15)}{make_row("Powyżej 2.5 gola", o25)}{make_row("Powyżej 3.5 gola", o35)}</div>""", unsafe_allow_html=True)
+                st.markdown(f"""<div class="premium-card"><h4 style="color: #9da5b1; text-align: center; margin-top: 0; margin-bottom: 15px; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 1px;">⚽ Gole w meczu (FT)</h4>{make_row("Obie strzelą (BTTS)", btts_yes)}{make_row("Powyżej 1.5 gola", o15)}{make_row("Powyżej 2.5 gola", o25)}{make_row("Powyżej 3.5 gola", o35)}</div>""", unsafe_allow_html=True)
             with col_b2:
-                st.markdown(f"""<div style="background: linear-gradient(180deg, rgba(30,33,43,1) 0%, rgba(22,25,34,1) 100%); padding: 15px; border-radius: 12px; border: 1px solid rgba(0, 255, 136, 0.1);"><h4 style="color: #9da5b1; text-align: center; margin-top: 0; margin-bottom: 15px; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 1px;">⏱️ Wynik i Gole do przerwy (HT)</h4>{make_row(f"1. połowa: {h_team}", ht_win)}{make_row("Remis do przerwy", ht_draw)}{make_row(f"1. połowa: {a_team}", ht_loss)}<hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 15px 0;">{make_row("Powyżej 0.5 gola (HT)", o05_ht)}{make_row("Powyżej 1.5 gola (HT)", o15_ht)}{make_row("Obie strzelą do przerwy", btts_ht)}</div>""", unsafe_allow_html=True)
+                st.markdown(f"""<div class="premium-card"><h4 style="color: #9da5b1; text-align: center; margin-top: 0; margin-bottom: 15px; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 1px;">⏱️ Wynik i Gole do przerwy (HT)</h4>{make_row(f"1. połowa: {h_team}", ht_win)}{make_row("Remis do przerwy", ht_draw)}{make_row(f"1. połowa: {a_team}", ht_loss)}<hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 15px 0;">{make_row("Powyżej 0.5 gola (HT)", o05_ht)}{make_row("Powyżej 1.5 gola (HT)", o15_ht)}{make_row("Obie strzelą do przerwy", btts_ht)}</div>""", unsafe_allow_html=True)
             st.write("")
             
             st.markdown("#### 🎯 Najbardziej Prawdopodobne Wyniki Meczu")
@@ -672,7 +744,7 @@ if menu_choice == "🎯 Centrum Analizy":
                 cols = st.columns(4)
                 for idx, (h_g, a_g, prob) in enumerate(results):
                     with cols[idx % 4]:
-                        st.markdown(f"""<div style="background: linear-gradient(135deg, #1e212b, #161922); border-radius: 12px; padding: 15px; text-align: center; border: 2px solid rgba(0, 255, 136, 0.3); margin-bottom: 10px;"><h2 style="margin: 0; color: #00ff88;">{h_g} - {a_g}</h2><p style="margin: 5px 0 0 0; font-size: 1.1em; color: white;"><strong>{prob:.1f}%</strong></p></div>""", unsafe_allow_html=True)
+                        st.markdown(f"""<div class="premium-card" style="text-align: center; margin-bottom: 10px;"><h2 style="margin: 0; color: #00ff88;">{h_g} - {a_g}</h2><p style="margin: 5px 0 0 0; font-size: 1.1em; color: white;"><strong>{prob:.1f}%</strong></p></div>""", unsafe_allow_html=True)
             else:
                 st.info("⚠️ System rozproszył prawdopodobieństwo (zbyt duży chaos bramkowy). Brak wyraźnie dominującego wyniku.")
 
@@ -706,11 +778,24 @@ if menu_choice == "🎯 Centrum Analizy":
                 elif best_ev == ev_x_pct: best_pick, best_odds, ai_prob = "X (Remis)", odds_x, draw
                 else: best_pick, best_odds, ai_prob = f"2 ({a_team})", odds_2, loss
 
+                # --- DYNAMICZNY ZAKRES WYKRESU ---
+                gauge_max = max(30, int(best_ev) + 10)
+                
                 fig_gauge = go.Figure(go.Indicator(
                     mode="gauge+number+delta", value=best_ev,
                     title={'text': f"Rekomendacja: <b>{best_pick}</b><br><span style='font-size:0.8em;color:#9da5b1'>Kurs: {best_odds} | Szansa AI: {ai_prob*100:.1f}%</span>"},
                     delta={'reference': 0, 'increasing': {'color': "#00ff88"}, 'decreasing': {'color': "#ff4b4b"}},
-                    gauge={'axis': {'range': [-30, 30], 'tickwidth': 1, 'tickcolor': "white"}, 'bar': {'color': "#00ff88" if best_ev > 0 else "#ff4b4b"}, 'bgcolor': "rgba(0,0,0,0)", 'borderwidth': 2, 'bordercolor': "#2b2f3b", 'steps': [{'range': [-30, 0], 'color': "rgba(255, 75, 75, 0.15)"}, {'range': [0, 10], 'color': "rgba(255, 204, 0, 0.15)"}, {'range': [10, 30], 'color': "rgba(0, 255, 136, 0.15)"}], 'threshold': {'line': {'color': "white", 'width': 3}, 'thickness': 0.75, 'value': best_ev}}
+                    gauge={
+                        'axis': {'range': [-30, gauge_max], 'tickwidth': 1, 'tickcolor': "white"}, 
+                        'bar': {'color': "#00ff88" if best_ev > 0 else "#ff4b4b"}, 
+                        'bgcolor': "rgba(0,0,0,0)", 'borderwidth': 2, 'bordercolor': "#2b2f3b", 
+                        'steps': [
+                            {'range': [-30, 0], 'color': "rgba(255, 75, 75, 0.15)"}, 
+                            {'range': [0, 10], 'color': "rgba(255, 204, 0, 0.15)"}, 
+                            {'range': [10, gauge_max], 'color': "rgba(0, 255, 136, 0.15)"}
+                        ], 
+                        'threshold': {'line': {'color': "white", 'width': 3}, 'thickness': 0.75, 'value': best_ev}
+                    }
                 ))
                 fig_gauge.update_layout(paper_bgcolor="rgba(0,0,0,0)", font={'color': "white"}, height=350, margin=dict(l=20, r=20, t=50, b=20))
                 
@@ -719,15 +804,22 @@ if menu_choice == "🎯 Centrum Analizy":
                 with col_g2:
                     st.write("")
                     margin_txt = f"🟢 Bardzo niska ({margin:.1f}%)" if margin < 3.5 else (f"🟡 Przeciętna ({margin:.1f}%)" if margin < 6.0 else f"🔴 Złodziejska ({margin:.1f}%)")
-                    st.markdown(f"<div style='padding:10px; background: rgba(255,255,255,0.05); border-radius: 10px; margin-bottom: 15px;'><b>Marża bukmachera:</b> {margin_txt}</div>", unsafe_allow_html=True)
-                    if best_ev > 5: st.success(f"🔥 **POTĘŻNE VALUE!**\nGrając na **{best_pick}** przy tym kursie, masz matematyczną przewagę w długim terminie ({best_ev:.1f}% zysku na każdym zakładzie).")
-                    elif best_ev > 0: st.warning(f"⚖️ **MINIMALNE VALUE**\nGra na **{best_pick}** jest lekko opłacalna (+{best_ev:.1f}%), ale bukmacher wystawił mocne kursy.")
-                    else: st.error(f"❌ **BRAK VALUE W TYM MECZU**\nBukmacher idealnie wycenił szanse. Najmniejsza strata to {best_pick} ({best_ev:.1f}%).")
+                    st.markdown(f"<div class='premium-card' style='padding:10px; text-align:center;'><b>Marża bukmachera:</b><br>{margin_txt}</div>", unsafe_allow_html=True)
+                    
+                    # LOGIKA WYŚWIETLANIA OSTRZEŻEŃ DLA ANOMALII
+                    if best_ev > 50: 
+                        st.error(f"⚠️ **ANOMALIA MATEMATYCZNA!**\nAI widzi w tym value ({best_ev:.1f}%), ale bukmacher wystawił kosmiczny kurs ({best_odds}). Granie tego to szukanie ekstremalnej sensacji. Uważaj ze stawką!")
+                    elif best_ev > 5: 
+                        st.success(f"🔥 **POTĘŻNE VALUE!**\nGrając na **{best_pick}** przy tym kursie, masz matematyczną przewagę w długim terminie ({best_ev:.1f}% zysku na każdym zakładzie).")
+                    elif best_ev > 0: 
+                        st.warning(f"⚖️ **MINIMALNE VALUE**\nGra na **{best_pick}** jest lekko opłacalna (+{best_ev:.1f}%), ale bukmacher dobrze wycenił szanse.")
+                    else: 
+                        st.error(f"❌ **BRAK VALUE W TYM MECZU**\nOmijaj ten rynek. Bukmacher ma nad Tobą przewagę matematyczną ({best_ev:.1f}%).")
         else: st.warning("Brak wystarczających danych.")
 
     with tab2:
         with st.expander("📖 Przewodnik: Jak czytać wskaźniki AI?"):
-            st.markdown("""<div style="background: rgba(255,255,255,0.02); padding: 20px; border-radius: 15px;"><h3 style="color: #00ff88; margin-top: 0;">🧠 System Taktyczny AI</h3><p style="color: #9da5b1;">Nasze algorytmy analizują twarde dane, aby stworzyć unikalny profil DNA zespołu.</p><div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;"><div style="border-left: 3px solid #00ff88; padding-left: 15px;"><b style="color: #00ff88;">🔥 Dominacja</b><br><small>Kontrola tempa gry.</small></div><div style="border-left: 3px solid #ff4b4b; padding-left: 15px;"><b style="color: #ff4b4b;">🎯 Kiler</b><br><small>Skuteczność ataku.</small></div><div style="border-left: 3px solid #ffcc00; padding-left: 15px;"><b style="color: #ffcc00;">🧱 Obrona</b><br><small>Stabilność defensywy.</small></div><div style="border-left: 3px solid #00d4ff; padding-left: 15px;"><b style="color: #00d4ff;">🧨 Chaos</b><br><small>Agresja i ryzyko kartek.</small></div></div></div>""", unsafe_allow_html=True)
+            st.markdown("""<div class="premium-card"><h3 style="color: #00ff88; margin-top: 0;">🧠 System Taktyczny AI</h3><p style="color: #9da5b1;">Nasze algorytmy analizują twarde dane, aby stworzyć unikalny profil DNA zespołu.</p><div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;"><div style="border-left: 3px solid #00ff88; padding-left: 15px;"><b style="color: #00ff88;">🔥 Dominacja</b><br><small>Kontrola tempa gry.</small></div><div style="border-left: 3px solid #ff4b4b; padding-left: 15px;"><b style="color: #ff4b4b;">🎯 Kiler</b><br><small>Skuteczność ataku.</small></div><div style="border-left: 3px solid #ffcc00; padding-left: 15px;"><b style="color: #ffcc00;">🧱 Obrona</b><br><small>Stabilność defensywy.</small></div><div style="border-left: 3px solid #00d4ff; padding-left: 15px;"><b style="color: #00d4ff;">🧨 Chaos</b><br><small>Agresja i ryzyko kartek.</small></div></div></div>""", unsafe_allow_html=True)
             st.write("")
 
         c_f1, c_f2 = st.columns([2, 1])
@@ -743,9 +835,9 @@ if menu_choice == "🎯 Centrum Analizy":
         if h_data and a_data:
             col_a, col_b = st.columns(2)
             with col_a:
-                st.markdown(f"""<div style="background: linear-gradient(135deg, #1e212b, #11131a); padding: 20px; border-radius: 20px; border: 1px solid rgba(0, 255, 136, 0.2); text-align: center;"><div style="font-size: 0.8rem; color: #00ff88; text-transform: uppercase; letter-spacing: 2px;">GOSPODARZ</div><div style="font-size: 1.8rem; font-weight: 900; color: white;">{h_team}</div><div style="font-size: 1.4rem; letter-spacing: 5px; margin: 10px 0;">{h_symbols}</div><div style="color: {h_trend_col}; font-weight: bold; font-size: 0.9rem;">{h_trend_txt}</div><div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px;"><div style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 10px;"><small style="color:#9da5b1;">DOMINACJA</small><br><b style="color:#00ff88;">{h_data['dom']:.1f}</b></div><div style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 10px;"><small style="color:#9da5b1;">KILER</small><br><b style="color:#ff4b4b;">{h_data['killer']:.1f}%</b></div><div style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 10px;"><small style="color:#9da5b1;">OBRONA</small><br><b style="color:#ffcc00;">{h_data['safety']:.1f}</b></div><div style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 10px;"><small style="color:#9da5b1;">CHAOS</small><br><b style="color:#00d4ff;">{h_data['chaos']:.1f}</b></div></div></div>""", unsafe_allow_html=True)
+                st.markdown(f"""<div class="premium-card" style="text-align: center;"><div style="font-size: 0.8rem; color: #00ff88; text-transform: uppercase; letter-spacing: 2px;">GOSPODARZ</div><div style="font-size: 1.8rem; font-weight: 900; color: white;">{h_team}</div><div style="font-size: 1.4rem; letter-spacing: 5px; margin: 10px 0;">{h_symbols}</div><div style="color: {h_trend_col}; font-weight: bold; font-size: 0.9rem;">{h_trend_txt}</div><div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px;"><div style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 10px;"><small style="color:#9da5b1;">DOMINACJA</small><br><b style="color:#00ff88;">{h_data['dom']:.1f}</b></div><div style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 10px;"><small style="color:#9da5b1;">KILER</small><br><b style="color:#ff4b4b;">{h_data['killer']:.1f}%</b></div><div style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 10px;"><small style="color:#9da5b1;">OBRONA</small><br><b style="color:#ffcc00;">{h_data['safety']:.1f}</b></div><div style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 10px;"><small style="color:#9da5b1;">CHAOS</small><br><b style="color:#00d4ff;">{h_data['chaos']:.1f}</b></div></div></div>""", unsafe_allow_html=True)
             with col_b:
-                st.markdown(f"""<div style="background: linear-gradient(135deg, #1e212b, #11131a); padding: 20px; border-radius: 20px; border: 1px solid rgba(255, 75, 75, 0.2); text-align: center;"><div style="font-size: 0.8rem; color: #ff4b4b; text-transform: uppercase; letter-spacing: 2px;">GOŚĆ</div><div style="font-size: 1.8rem; font-weight: 900; color: white;">{a_team}</div><div style="font-size: 1.4rem; letter-spacing: 5px; margin: 10px 0;">{a_symbols}</div><div style="color: {a_trend_col}; font-weight: bold; font-size: 0.9rem;">{a_trend_txt}</div><div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px;"><div style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 10px;"><small style="color:#9da5b1;">DOMINACJA</small><br><b style="color:#00ff88;">{a_data['dom']:.1f}</b></div><div style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 10px;"><small style="color:#9da5b1;">KILER</small><br><b style="color:#ff4b4b;">{a_data['killer']:.1f}%</b></div><div style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 10px;"><small style="color:#9da5b1;">OBRONA</small><br><b style="color:#ffcc00;">{a_data['safety']:.1f}</b></div><div style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 10px;"><small style="color:#9da5b1;">CHAOS</small><br><b style="color:#00d4ff;">{a_data['chaos']:.1f}</b></div></div></div>""", unsafe_allow_html=True)
+                st.markdown(f"""<div class="premium-card" style="text-align: center;"><div style="font-size: 0.8rem; color: #ff4b4b; text-transform: uppercase; letter-spacing: 2px;">GOŚĆ</div><div style="font-size: 1.8rem; font-weight: 900; color: white;">{a_team}</div><div style="font-size: 1.4rem; letter-spacing: 5px; margin: 10px 0;">{a_symbols}</div><div style="color: {a_trend_col}; font-weight: bold; font-size: 0.9rem;">{a_trend_txt}</div><div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px;"><div style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 10px;"><small style="color:#9da5b1;">DOMINACJA</small><br><b style="color:#00ff88;">{a_data['dom']:.1f}</b></div><div style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 10px;"><small style="color:#9da5b1;">KILER</small><br><b style="color:#ff4b4b;">{a_data['killer']:.1f}%</b></div><div style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 10px;"><small style="color:#9da5b1;">OBRONA</small><br><b style="color:#ffcc00;">{a_data['safety']:.1f}</b></div><div style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 10px;"><small style="color:#9da5b1;">CHAOS</small><br><b style="color:#00d4ff;">{a_data['chaos']:.1f}</b></div></div></div>""", unsafe_allow_html=True)
 
             st.write("")
             st.markdown("<h3 style='text-align: center;'>⚔️ Bitwa na DNA (Radar Match)</h3>", unsafe_allow_html=True)
@@ -756,7 +848,7 @@ if menu_choice == "🎯 Centrum Analizy":
                 total = val1 + val2 if (val1 + val2) > 0 else 1
                 return f"""<div style="margin-bottom: 15px;"><div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-weight: bold; font-size: 0.85rem;"><span style="color: white;">{val1:.2f}</span><span style="color: #9da5b1; text-transform: uppercase;">{label}</span><span style="color: white;">{val2:.2f}</span></div><div style="display: flex; width: 100%; height: 8px; background: rgba(255,255,255,0.05); border-radius: 4px; overflow: hidden;"><div style="width: {(val1/total)*100}%; background: {color};"></div><div style="width: {(val2/total)*100}%; background: #ff4b4b;"></div></div></div>"""
 
-            st.markdown(f"""<div style="background: rgba(255,255,255,0.02); padding: 20px; border-radius: 15px; border: 1px solid rgba(255,255,255,0.05);"><div style="color: #00ff88; font-size: 0.7rem; margin-bottom: 15px; text-align: center; letter-spacing: 2px;">SKUTECZNOŚĆ</div>{vs_row("Gole Zdobyte", h_data['gf'], a_data['gf'])}{vs_row("Gole Stracone", h_data['ga'], a_data['ga'])}<div style="color: #ffcc00; font-size: 0.7rem; margin: 20px 0 15px 0; text-align: center; letter-spacing: 2px;">AKTYWNOŚĆ</div>{vs_row("Strzały Celne", h_data['shots_ot'], a_data['shots_ot'], "#ffcc00")}{vs_row("Rzuty Rożne", h_data['corners'], a_data['corners'], "#ffcc00")}<div style="color: #00d4ff; font-size: 0.7rem; margin: 20px 0 15px 0; text-align: center; letter-spacing: 2px;">DYSCYPLINA</div>{vs_row("Faule", h_data['fouls'], a_data['fouls'], "#00d4ff")}{vs_row("Żółte Kartki", h_data['yellows'], a_data['yellows'], "#00d4ff")}</div>""", unsafe_allow_html=True)
+            st.markdown(f"""<div class="premium-card"><div style="color: #00ff88; font-size: 0.7rem; margin-bottom: 15px; text-align: center; letter-spacing: 2px;">SKUTECZNOŚĆ</div>{vs_row("Gole Zdobyte", h_data['gf'], a_data['gf'])}{vs_row("Gole Stracone", h_data['ga'], a_data['ga'])}<div style="color: #ffcc00; font-size: 0.7rem; margin: 20px 0 15px 0; text-align: center; letter-spacing: 2px;">AKTYWNOŚĆ</div>{vs_row("Strzały Celne", h_data['shots_ot'], a_data['shots_ot'], "#ffcc00")}{vs_row("Rzuty Rożne", h_data['corners'], a_data['corners'], "#ffcc00")}<div style="color: #00d4ff; font-size: 0.7rem; margin: 20px 0 15px 0; text-align: center; letter-spacing: 2px;">DYSCYPLINA</div>{vs_row("Faule", h_data['fouls'], a_data['fouls'], "#00d4ff")}{vs_row("Żółte Kartki", h_data['yellows'], a_data['yellows'], "#00d4ff")}</div>""", unsafe_allow_html=True)
             st.divider()
 
             def build_html_table(data, team1, team2):
@@ -781,7 +873,7 @@ if menu_choice == "🎯 Centrum Analizy":
 
             st.write("")
             st.markdown("<h3 style='text-align: center; color: white;'>🏆 Sytuacja w Tabeli i Historia H2H</h3>", unsafe_allow_html=True)
-            st.markdown("<style>.bet-table { width: 100%; border-collapse: collapse; border-radius: 12px; overflow: hidden; background: linear-gradient(180deg, #1e212b 0%, #161922 100%); border: 1px solid rgba(255,255,255,0.05); margin-top: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); } .bet-table th { background: rgba(0, 0, 0, 0.4); color: #9da5b1; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px; padding: 15px 10px; border-bottom: 2px solid rgba(255,255,255,0.05); text-align: center; } .bet-table td { padding: 12px 10px; color: #ffffff; border-bottom: 1px solid rgba(255,255,255,0.02); text-align: center; font-size: 0.9rem; transition: background 0.3s ease; } .bet-table tr:hover td { background: rgba(0, 184, 255, 0.05); } .bet-table tr:last-child td { border-bottom: none; }</style>", unsafe_allow_html=True)
+            st.markdown("<style>.bet-table { width: 100%; border-collapse: collapse; border-radius: 12px; overflow: hidden; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255,255,255,0.1); margin-top: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); backdrop-filter: blur(12px); } .bet-table th { background: rgba(0, 0, 0, 0.4); color: #9da5b1; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px; padding: 15px 10px; border-bottom: 2px solid rgba(255,255,255,0.05); text-align: center; } .bet-table td { padding: 12px 10px; color: #ffffff; border-bottom: 1px solid rgba(255,255,255,0.02); text-align: center; font-size: 0.9rem; transition: background 0.3s ease; } .bet-table tr:hover td { background: rgba(0, 184, 255, 0.05); } .bet-table tr:last-child td { border-bottom: none; }</style>", unsafe_allow_html=True)
 
             t_mini, t_h2h = st.tabs(["📊 Tabela Ligowa", "⚔️ Bezpośrednie Starcia (H2H)"])
             with t_mini:
@@ -810,7 +902,7 @@ if menu_choice == "🎯 Centrum Analizy":
             elif loss > win and loss > draw: main_pick, main_prob, main_col, main_icon = a_team, loss, "#ff4b4b", "✈️"
             else: main_pick, main_prob, main_col, main_icon = "REMIS", draw, "#ffcc00", "⚖️"
 
-            st.markdown(f"""<div style="background: linear-gradient(135deg, #1e212b, #161922); padding: 30px; border-radius: 20px; border: 2px solid {main_col}; text-align: center; margin-bottom: 30px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);"><div style="font-size: 1rem; color: #9da5b1; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 10px;">Główny Werdykt AI</div><div style="font-size: 3.5rem; margin-bottom: 10px;">{main_icon}</div><div style="font-size: 2.5rem; font-weight: 900; color: white; line-height: 1.1;">{main_pick}</div><div style="font-size: 1.5rem; color: {main_col}; font-weight: bold; margin-top: 10px;">Prawdopodobieństwo: {main_prob*100:.1f}%</div></div>""", unsafe_allow_html=True)
+            st.markdown(f"""<div class="premium-card" style="border: 2px solid {main_col} !important; text-align: center;"><div style="font-size: 1rem; color: #9da5b1; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 10px;">Główny Werdykt AI</div><div style="font-size: 3.5rem; margin-bottom: 10px;">{main_icon}</div><div style="font-size: 2.5rem; font-weight: 900; color: white; line-height: 1.1;">{main_pick}</div><div style="font-size: 1.5rem; color: {main_col}; font-weight: bold; margin-top: 10px;">Prawdopodobieństwo: {main_prob*100:.1f}%</div></div>""", unsafe_allow_html=True)
 
             col_t1, col_t2 = st.columns(2)
             with col_t1:
@@ -820,12 +912,12 @@ if menu_choice == "🎯 Centrum Analizy":
                 if ht_draw > 0.40: safe_tips.append(("Remis do przerwy", ht_draw))
                 if o05_ht > 0.70: safe_tips.append(("Gol w 1. połowie", o05_ht))
 
-                st.markdown("""<div style="background: rgba(0, 212, 255, 0.05); padding: 20px; border-radius: 15px; border: 1px solid rgba(0, 212, 255, 0.2); height: 100%;"><h4 style="color: #00d4ff; margin-top: 0; margin-bottom: 20px; text-align: center;">🛡️ Bezpieczne Propozycje</h4>""", unsafe_allow_html=True)
+                st.markdown("""<div class="premium-card" style="border: 1px solid rgba(0, 212, 255, 0.2) !important;"><h4 style="color: #00d4ff; margin-top: 0; margin-bottom: 20px; text-align: center;">🛡️ Bezpieczne Propozycje</h4>""", unsafe_allow_html=True)
                 for tip, prob in safe_tips[:3]: st.markdown(f"""<div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); padding: 12px; border-radius: 10px; margin-bottom: 10px;"><span style="color: white; font-weight: bold;">{tip}</span><span style="color: #00ff88; font-weight: 900;">{prob*100:.1f}%</span></div>""", unsafe_allow_html=True)
                 st.markdown("</div>", unsafe_allow_html=True)
 
             with col_t2:
-                st.markdown("""<div style="background: rgba(255, 204, 0, 0.05); padding: 20px; border-radius: 15px; border: 1px solid rgba(255, 204, 0, 0.2); height: 100%;"><h4 style="color: #ffcc00; margin-top: 0; margin-bottom: 20px; text-align: center;">💎 Typy Eksperckie (High Value)</h4>""", unsafe_allow_html=True)
+                st.markdown("""<div class="premium-card" style="border: 1px solid rgba(255, 204, 0, 0.2) !important;"><h4 style="color: #ffcc00; margin-top: 0; margin-bottom: 20px; text-align: center;">💎 Typy Eksperckie (High Value)</h4>""", unsafe_allow_html=True)
                 expert_tips = []
                 if o25 > 0.55: expert_tips.append(("Powyżej 2.5 gola", o25))
                 if o35 > 0.40: expert_tips.append(("Powyżej 3.5 gola", o35))
@@ -840,7 +932,7 @@ if menu_choice == "🎯 Centrum Analizy":
             st.write("")
             risk_level = "NISKIE" if main_prob > 0.65 else ("ŚREDNIE" if main_prob > 0.45 else "WYSOKIE")
             risk_color = "#00ff88" if risk_level == "NISKIE" else ("#ffcc00" if risk_level == "ŚREDNIE" else "#ff4b4b")
-            st.markdown(f"""<div style="background: rgba(255,255,255,0.02); padding: 20px; border-radius: 15px; border-top: 4px solid {risk_color}; text-align: center;"><span style="color: #9da5b1; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 2px;">Ogólna Ocena Ryzyka</span><div style="color: {risk_color}; font-size: 2rem; font-weight: 900; margin-top: 5px;">{risk_level}</div><p style="color: #9da5b1; font-size: 0.9rem; margin-top: 10px; max-width: 600px; margin-left: auto; margin-right: auto;">Werdykt oparty na aktualnej formie strzeleckiej oraz stabilności defensywnej. Pamiętaj, że w sporcie zawsze istnieje element losowości. Graj odpowiedzialnie!</p></div>""", unsafe_allow_html=True)
+            st.markdown(f"""<div class="premium-card" style="border-top: 4px solid {risk_color} !important; text-align: center;"><span style="color: #9da5b1; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 2px;">Ogólna Ocena Ryzyka</span><div style="color: {risk_color}; font-size: 2rem; font-weight: 900; margin-top: 5px;">{risk_level}</div><p style="color: #9da5b1; font-size: 0.9rem; margin-top: 10px; max-width: 600px; margin-left: auto; margin-right: auto;">Werdykt oparty na aktualnej formie strzeleckiej oraz stabilności defensywnej. Pamiętaj, że w sporcie zawsze istnieje element losowości. Graj odpowiedzialnie!</p></div>""", unsafe_allow_html=True)
 
     with tab4:
         st.header("🟨 Card & Aggression Analyzer")
@@ -859,7 +951,7 @@ if menu_choice == "🎯 Centrum Analizy":
             
             with col_c1:
                 st.markdown(f"""
-                <div style="background: rgba(255, 204, 0, 0.05); border: 1px solid rgba(255, 204, 0, 0.2); padding: 20px; border-radius: 15px; text-align: center;">
+                <div class="premium-card" style="border: 1px solid rgba(255, 204, 0, 0.2) !important; text-align: center;">
                     <div style="color: #ffcc00; font-size: 0.8rem; text-transform: uppercase; font-weight: bold;">Indeks Agresji: {h_team}</div>
                     <div style="color: white; font-size: 2.5rem; font-weight: 900;">{h_agg_pct:.0f}%</div>
                     <div style="color: #9da5b1; font-size: 0.8rem; margin-top: 5px;">Śr. fauli: {h_stats_recent['fouls']:.1f} | Kartki: {h_stats_recent['yellows']:.1f}</div>
@@ -868,7 +960,7 @@ if menu_choice == "🎯 Centrum Analizy":
 
             with col_c2:
                 st.markdown(f"""
-                <div style="background: rgba(255, 204, 0, 0.05); border: 1px solid rgba(255, 204, 0, 0.2); padding: 20px; border-radius: 15px; text-align: center;">
+                <div class="premium-card" style="border: 1px solid rgba(255, 204, 0, 0.2) !important; text-align: center;">
                     <div style="color: #ffcc00; font-size: 0.8rem; text-transform: uppercase; font-weight: bold;">Indeks Agresji: {a_team}</div>
                     <div style="color: white; font-size: 2.5rem; font-weight: 900;">{a_agg_pct:.0f}%</div>
                     <div style="color: #9da5b1; font-size: 0.8rem; margin-top: 5px;">Śr. fauli: {a_stats_recent['fouls']:.1f} | Kartki: {a_stats_recent['yellows']:.1f}</div>
@@ -881,7 +973,7 @@ if menu_choice == "🎯 Centrum Analizy":
             heat_desc = "CZYSTA GRA" if total_match_heat < 40 else ("OSTRA WALKA" if total_match_heat < 70 else "BRUTALNY MECZ")
             
             st.markdown(f"""
-            <div style="background: rgba(255,255,255,0.02); padding: 20px; border-radius: 15px; border-top: 4px solid {heat_color};">
+            <div class="premium-card" style="border-top: 4px solid {heat_color} !important;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span style="color: #9da5b1; font-weight: bold;">PRZEWIDYWANA TEMPERATURA MECZU:</span>
                     <span style="color: {heat_color}; font-weight: 900; font-size: 1.2rem;">{heat_desc}</span>
@@ -900,7 +992,7 @@ if menu_choice == "🎯 Centrum Analizy":
                 line = 3.5 if total_match_heat < 50 else 4.5
                 prob_over = np.clip(total_match_heat * 1.1, 30, 95)
                 st.markdown(f"""
-                <div style="background: rgba(255,255,255,0.03); padding: 15px; border-radius: 10px; border-left: 4px solid #ffcc00;">
+                <div class="premium-card" style="border-left: 4px solid #ffcc00 !important;">
                     <span style="color: #9da5b1; font-size: 0.8rem;">GŁÓWNA LINIA</span><br>
                     <b style="color: white;">Powyżej {line} kartek</b><br>
                     <span style="color: #00ff88; font-weight: bold;">Prawdopodobieństwo: {prob_over:.1f}%</span>
@@ -910,7 +1002,7 @@ if menu_choice == "🎯 Centrum Analizy":
             with c_tip2:
                 more_agg = h_team if h_agg_score > a_agg_score else a_team
                 st.markdown(f"""
-                <div style="background: rgba(255,255,255,0.03); padding: 15px; border-radius: 10px; border-left: 4px solid #ff4b4b;">
+                <div class="premium-card" style="border-left: 4px solid #ff4b4b !important;">
                     <span style="color: #9da5b1; font-size: 0.8rem;">DRUŻYNA Z WIĘKSZĄ LICZBĄ KARTREK</span><br>
                     <b style="color: white;">{more_agg}</b><br>
                     <span style="color: #ff4b4b; font-weight: bold;">DNA: {h_stats_recent['chaos'] if h_agg_score > a_agg_score else a_stats_recent['chaos']:.1f}/10 (Wysoki Chaos)</span>
@@ -944,7 +1036,7 @@ if menu_choice == "🎯 Centrum Analizy":
             col_r1, col_r2 = st.columns(2)
             with col_r1:
                 st.markdown(f"""
-                <div style="background: rgba(0, 184, 255, 0.05); border: 1px solid rgba(0, 184, 255, 0.2); padding: 20px; border-radius: 15px; text-align: center;">
+                <div class="premium-card" style="border: 1px solid rgba(0, 184, 255, 0.2) !important; text-align: center;">
                     <div style="color: #00b8ff; font-size: 0.8rem; text-transform: uppercase; font-weight: bold;">Potencjał Rożnych: {h_team}</div>
                     <div style="color: white; font-size: 2.5rem; font-weight: 900;">{h_corner_pot:.1f}</div>
                     <div style="color: #9da5b1; font-size: 0.8rem; margin-top: 5px;">Śr. nabijanych: {h_stats_recent['corners']:.1f} | Dopuszczanych: {h_stats_recent['opp_corners']:.1f}</div>
@@ -953,7 +1045,7 @@ if menu_choice == "🎯 Centrum Analizy":
 
             with col_r2:
                 st.markdown(f"""
-                <div style="background: rgba(0, 184, 255, 0.05); border: 1px solid rgba(0, 184, 255, 0.2); padding: 20px; border-radius: 15px; text-align: center;">
+                <div class="premium-card" style="border: 1px solid rgba(0, 184, 255, 0.2) !important; text-align: center;">
                     <div style="color: #00b8ff; font-size: 0.8rem; text-transform: uppercase; font-weight: bold;">Potencjał Rożnych: {a_team}</div>
                     <div style="color: white; font-size: 2.5rem; font-weight: 900;">{a_corner_pot:.1f}</div>
                     <div style="color: #9da5b1; font-size: 0.8rem; margin-top: 5px;">Śr. nabijanych: {a_stats_recent['corners']:.1f} | Dopuszczanych: {a_stats_recent['opp_corners']:.1f}</div>
@@ -963,7 +1055,7 @@ if menu_choice == "🎯 Centrum Analizy":
             st.write("")
             
             st.markdown(f"""
-            <div style="background: rgba(255,255,255,0.02); padding: 20px; border-radius: 15px; border-top: 4px solid #00b8ff;">
+            <div class="premium-card" style="border-top: 4px solid #00b8ff !important;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span style="color: #9da5b1; font-weight: bold;">PRZEWIDYWANA SUMA ROŻNYCH:</span>
                     <span style="color: #00b8ff; font-weight: 900; font-size: 1.5rem;">ok. {total_expected_corners:.1f}</span>
@@ -979,11 +1071,11 @@ if menu_choice == "🎯 Centrum Analizy":
             line_mid = np.floor(total_expected_corners - 0.5)
             
             with c_tip1:
-                st.markdown(f"""<div style="background: rgba(255,255,255,0.03); padding: 15px; border-radius: 10px; text-align: center; border-bottom: 3px solid #00ff88;"><span style="color: #9da5b1; font-size: 0.7rem;">BEZPIECZNA</span><br><b style="color: white;">Powyżej {line_low:.1f}</b></div>""", unsafe_allow_html=True)
+                st.markdown(f"""<div class="premium-card" style="text-align: center; border-bottom: 3px solid #00ff88 !important;"><span style="color: #9da5b1; font-size: 0.7rem;">BEZPIECZNA</span><br><b style="color: white;">Powyżej {line_low:.1f}</b></div>""", unsafe_allow_html=True)
             with c_tip2:
-                st.markdown(f"""<div style="background: rgba(255,255,255,0.03); padding: 15px; border-radius: 10px; text-align: center; border-bottom: 3px solid #ffcc00;"><span style="color: #9da5b1; font-size: 0.7rem;">OPTYMALNA</span><br><b style="color: white;">Powyżej {line_mid:.1f}</b></div>""", unsafe_allow_html=True)
+                st.markdown(f"""<div class="premium-card" style="text-align: center; border-bottom: 3px solid #ffcc00 !important;"><span style="color: #9da5b1; font-size: 0.7rem;">OPTYMALNA</span><br><b style="color: white;">Powyżej {line_mid:.1f}</b></div>""", unsafe_allow_html=True)
             with c_tip3:
-                st.markdown(f"""<div style="background: rgba(255,255,255,0.03); padding: 15px; border-radius: 10px; text-align: center; border-bottom: 3px solid #ff4b4b;"><span style="color: #9da5b1; font-size: 0.7rem;">RYZYKOWNA</span><br><b style="color: white;">Powyżej {line_mid + 1:.1f}</b></div>""", unsafe_allow_html=True)
+                st.markdown(f"""<div class="premium-card" style="text-align: center; border-bottom: 3px solid #ff4b4b !important;"><span style="color: #9da5b1; font-size: 0.7rem;">RYZYKOWNA</span><br><b style="color: white;">Powyżej {line_mid + 1:.1f}</b></div>""", unsafe_allow_html=True)
 
             h2h = get_h2h_stats(h_team, a_team, last_n=5)
             if h2h:
@@ -1002,7 +1094,6 @@ if menu_choice == "🎯 Centrum Analizy":
         st.header("🧪 Laboratorium PRO - Symulator xG")
         st.markdown("Wpisz własne przewidywania Expected Goals (xG) i zobacz matematyczną matrycę wyników.")
 
-        # --- SUWAKI DO RĘCZNEGO USTAWIANIA xG ---
         col1, col2 = st.columns(2)
         with col1:
             xg_home = st.slider("⚽ Gospdarze (Przewidywane xG)", min_value=0.1, max_value=4.0, value=1.5, step=0.1)
@@ -1011,23 +1102,17 @@ if menu_choice == "🎯 Centrum Analizy":
 
         st.divider()
 
-        # --- KALKULATOR POISSONA ---
-        # (Pamiętaj, że na samej górze pliku gui.py musi być: import math)
-        import math 
-
         def calculate_poisson(lambda_val, k):
             return ((lambda_val ** k) * math.exp(-lambda_val)) / math.factorial(k)
 
-        # Liczymy szanse na wygraną, remis i przegraną
         home_win_prob = 0
         draw_prob = 0
         away_win_prob = 0
 
-        # Generujemy matrycę wyników (od 0 do 5 goli)
         matrix = []
-        for i in range(6):  # Gole gospodarzy
+        for i in range(6): 
             row = []
-            for j in range(6):  # Gole gości
+            for j in range(6): 
                 prob = calculate_poisson(xg_home, i) * calculate_poisson(xg_away, j)
                 row.append(prob)
                 if i > j:
@@ -1038,11 +1123,9 @@ if menu_choice == "🎯 Centrum Analizy":
                     away_win_prob += prob
             matrix.append(row)
 
-        # --- WYŚWIETLANIE GŁÓWNYCH SZANS ---
         st.subheader("📊 Główne rynki (1X2)")
         col_p1, col_px, col_p2 = st.columns(3)
         
-        # Zabezpieczenie przed dzieleniem przez 0
         fair_home = 1/home_win_prob if home_win_prob > 0 else 0
         fair_draw = 1/draw_prob if draw_prob > 0 else 0
         fair_away = 1/away_win_prob if away_win_prob > 0 else 0
@@ -1364,15 +1447,15 @@ elif menu_choice == "📈 Dziennik Zysków (ROI)":
                     <div style="color: #9da5b1; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px;">Zagrane Typy</div>
                     <div style="color: #00b8ff; font-size: 1.8rem; font-weight: 900;">{len(df_bets)}</div>
                 </div>
-                <div class="premium-card" style="text-align: center; padding: 15px; border-bottom: 2px solid #ffcc00;">
+                <div class="premium-card" style="text-align: center; padding: 15px; border-bottom: 2px solid #ffcc00 !important;">
                     <div style="color: #9da5b1; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px;">Skuteczność</div>
                     <div style="color: #ffcc00; font-size: 1.8rem; font-weight: 900;">{win_rate:.1f}%</div>
                 </div>
-                <div class="premium-card" style="text-align: center; padding: 15px; border-bottom: 2px solid #00ff88;">
+                <div class="premium-card" style="text-align: center; padding: 15px; border-bottom: 2px solid #00ff88 !important;">
                     <div style="color: #9da5b1; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px;">Zysk Netto</div>
                     <div style="color: #00ff88; font-size: 1.8rem; font-weight: 900;">{zysk_strata:.1f}j</div>
                 </div>
-                <div class="premium-card" style="text-align: center; padding: 15px; border-bottom: 2px solid {'#00ff88' if yield_pct >= 0 else '#ff4b4b'};">
+                <div class="premium-card" style="text-align: center; padding: 15px; border-bottom: 2px solid {'#00ff88' if yield_pct >= 0 else '#ff4b4b'} !important;">
                     <div style="color: #9da5b1; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px;">Yield (ROI)</div>
                     <div style="color: {'#00ff88' if yield_pct >= 0 else '#ff4b4b'}; font-size: 1.8rem; font-weight: 900;">{yield_pct:.1f}%</div>
                 </div>
