@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import os
+import re
 import requests
 from bs4 import BeautifulSoup
 import random
@@ -354,6 +355,97 @@ def save_bet_to_tracker(date, league, match, pick, prob, odds_key=None):
         new_data.to_csv(file_name, index=False)
         
     st.toast(f"✅ Zapisano mecz {match} po kursie {final_odds} do Dziennika ROI!")
+
+def auto_settle_bets():
+    file_name = "roi_tracker.csv"
+    if not os.path.exists(file_name) or os.path.getsize(file_name) == 0:
+        return 0
+        
+    try:
+        df_bets = pd.read_csv(file_name)
+    except pd.errors.EmptyDataError:
+        return 0
+        
+    zmiany = 0
+    for i, row in df_bets.iterrows():
+        if row['Status'] == 'Oczekujący':
+            liga = row['Liga']
+            mecz = row['Mecz']
+            typ = row['Typ']
+            data_kuponu = row['Data']
+            
+            if liga not in all_data: continue
+            df_liga = all_data[liga]
+            
+            if " - " not in mecz: continue
+            home_team, away_team = mecz.split(" - ", 1)
+            
+            # Szukamy tego konkretnego meczu w naszej bazie CSV
+            match_data = df_liga[(df_liga['HomeTeam'] == home_team) & (df_liga['AwayTeam'] == away_team)].copy()
+            if match_data.empty: continue
+            
+            # Sortujemy, żeby wziąć najnowsze starcie
+            match_data['Date'] = pd.to_datetime(match_data['Date'], dayfirst=True, errors='coerce')
+            match_data = match_data.sort_values('Date', ascending=False)
+            najnowszy_mecz = match_data.iloc[0].fillna(0)
+            
+            try:
+                bet_date = pd.to_datetime(data_kuponu).date()
+                match_date = pd.to_datetime(najnowszy_mecz['Date']).date()
+                # Dopuszczamy 1 dzień różnicy ze względu na strefy czasowe (API vs CSV)
+                # Jeśli różnica jest większa, znaczy, że strona football-data jeszcze nie wgrała wczorajszych wyników.
+                if abs((bet_date - match_date).days) > 1:
+                    continue 
+            except:
+                continue
+                
+            fthg = najnowszy_mecz.get('FTHG', 0)
+            ftag = najnowszy_mecz.get('FTAG', 0)
+            ftr = najnowszy_mecz.get('FTR', '')
+            
+            wygrany = None
+            liczby = re.findall(r"[-+]?\d*\.\d+|\d+", typ)
+            linia = float(liczby[0]) if liczby else 0
+            
+            # Weryfikacja 1X2
+            if "1X2" in typ:
+                if "(1)" in typ and ftr == 'H': wygrany = True
+                elif "(2)" in typ and ftr == 'A': wygrany = True
+                elif "(X)" in typ and ftr == 'D': wygrany = True
+                else: wygrany = False
+                
+            # Weryfikacja GOLI
+            elif "gola" in typ:
+                gole = fthg + ftag
+                if "Powyżej" in typ: wygrany = gole > linia
+                elif "Poniżej" in typ: wygrany = gole < linia
+                
+            # Weryfikacja KARTEK (Żółte + Czerwone)
+            elif "kartek" in typ:
+                kartki = najnowszy_mecz.get('HY', 0) + najnowszy_mecz.get('AY', 0) + najnowszy_mecz.get('HR', 0) + najnowszy_mecz.get('AR', 0)
+                if "Powyżej" in typ: wygrany = kartki > linia
+                elif "Poniżej" in typ: wygrany = kartki < linia
+                
+            # Weryfikacja ROŻNYCH
+            elif "rożnych" in typ:
+                rozne = najnowszy_mecz.get('HC', 0) + najnowszy_mecz.get('AC', 0)
+                if "Powyżej" in typ: wygrany = rozne > linia
+                elif "Poniżej" in typ: wygrany = rozne < linia
+
+            # Zmiana statusu z Oczekującego na rozliczony
+            if wygrany is True:
+                df_bets.at[i, 'Status'] = 'Wygrany'
+                df_bets.at[i, 'Zysk_Strata'] = (100 * row['Kurs']) - 100
+                zmiany += 1
+            elif wygrany is False:
+                df_bets.at[i, 'Status'] = 'Przegrany'
+                df_bets.at[i, 'Zysk_Strata'] = -100
+                zmiany += 1
+                
+    if zmiany > 0:
+        df_bets.to_csv(file_name, index=False)
+        
+    return zmiany
 
 def get_advanced_stats(team, side, mode, last_n=None):
     if 'df' not in globals(): return None
