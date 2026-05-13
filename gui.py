@@ -45,52 +45,45 @@ elif st.session_state["authentication_status"] is None:
 # --- CUSTOM CSS: STYLIZACJA DASHBOARDU I MENU ---
 st.markdown("""
 <style>
-    /* Lista rozwijana z ligami */
-    div[data-testid="stSidebar"] div[data-baseweb="select"] > div {
-        background: linear-gradient(135deg, #161922 0%, #1a1d26 100%) !important;
-        border: 1px solid rgba(0, 184, 255, 0.3) !important;
-        border-radius: 10px !important;
-        color: white !important;
-        box-shadow: inset 0 2px 5px rgba(0,0,0,0.5) !important;
-        transition: all 0.3s ease-in-out !important;
-        cursor: pointer !important;
-    }
-    div[data-testid="stSidebar"] div[data-baseweb="select"] > div:hover {
-        border: 1px solid #00b8ff !important;
-        box-shadow: 0 0 15px rgba(0, 184, 255, 0.5), inset 0 2px 5px rgba(0,0,0,0.5) !important;
-    }
-    
-    /* MAGIA: Zmiana standardowego Radio na Przyciski Menu PRO */
-    div.stRadio > div[role="radiogroup"] > label {
-        background: linear-gradient(135deg, #1e212b 0%, #161922 100%);
-        padding: 12px 15px;
-        border-radius: 12px;
-        margin-bottom: 10px;
+    /* Klasa dla karty premium */
+    .premium-card {
+        background: linear-gradient(145deg, #1e212b, #11131a);
+        border-radius: 15px;
+        padding: 20px;
+        margin-bottom: 20px;
         border: 1px solid rgba(255,255,255,0.05);
-        transition: all 0.3s ease;
-        cursor: pointer;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        box-shadow: 0 10px 20px rgba(0,0,0,0.4);
+        transition: transform 0.2s ease;
     }
-    div.stRadio > div[role="radiogroup"] > label:hover {
-        border: 1px solid #00b8ff;
-        background: rgba(0, 184, 255, 0.05);
-        transform: translateY(-2px);
+    .premium-card:hover {
+        transform: translateY(-3px);
+        border: 1px solid rgba(0, 255, 136, 0.2);
     }
-    /* Aktywny przycisk menu */
-    div.stRadio > div[role="radiogroup"] > label[data-checked="true"] {
-        border: 1px solid #00ff88;
-        box-shadow: 0 0 15px rgba(0, 255, 136, 0.2);
-        background: rgba(0, 255, 136, 0.05);
+    .league-tag {
+        color: #00b8ff;
+        font-size: 0.75rem;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        margin-bottom: 8px;
     }
-    /* Ukrycie standardowej kropki z formularza */
-    div.stRadio > div[role="radiogroup"] > label > div:first-child {
-        display: none;
+    .match-title {
+        font-size: 1.5rem;
+        font-weight: 900;
+        color: white;
+        margin-bottom: 12px;
     }
-    /* Pogrubienie i kolor tekstu menu */
-    div.stRadio > div[role="radiogroup"] > label p {
-        font-weight: 900 !important;
-        font-size: 1.1rem !important;
-        letter-spacing: 1px;
+    .pick-box {
+        background: rgba(255,255,255,0.03);
+        border-radius: 10px;
+        padding: 15px;
+        text-align: center;
+        border-left: 5px solid;
+    }
+    .prob-text {
+        font-size: 0.85rem;
+        color: #9da5b1;
+        margin-top: 5px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -230,7 +223,7 @@ with st.sidebar:
 
     st.markdown("<hr style='border: none; border-top: 1px dashed rgba(255,255,255,0.1); margin: 15px 0;'>", unsafe_allow_html=True)
     
-    if menu_choice in ["🎯 Centrum Analizy", "🔮 Złote Typy AI"]:
+    if menu_choice == "🎯 Centrum Analizy":
         st.markdown("<p style='color: #00b8ff; font-weight: bold; font-size: 0.85rem; text-transform: uppercase;'>🌍 Baza Rozgrywek</p>", unsafe_allow_html=True)
         league_choice = st.selectbox("Wybierz Ligę", list(all_data.keys()), label_visibility="collapsed")
         df = all_data[league_choice]
@@ -331,6 +324,25 @@ def calc_power(stats, mot_val, missing):
     if final_power > 105:
         final_power = 105 + (np.log(final_power - 104) * 4) 
     return round(np.clip(final_power, 40, 115), 1)
+
+# ... tutaj kończy się funkcja calc_power ...
+    return round(np.clip(final_power, 40, 115), 1)
+
+# === TUTAJ WKLEJASZ NOWY KOD ===
+def calculate_kelly(prob_pct, odds, bankroll=1000):
+    """Oblicza sugerowaną stawkę na podstawie przewagi matematycznej."""
+    p = prob_pct / 100.0
+    q = 1.0 - p
+    b = float(odds) - 1.0
+    
+    if b <= 0: return 0
+    f = (b * p - q) / b
+    
+    # Używamy "Fractional Kelly" (0.25), żeby nie zbankrutować przy jednej pomyłce
+    safe_f = f * 0.25 
+    stake = max(0, safe_f * bankroll)
+    return round(stake, 1) # Zwraca np. 42.5 jednostki
+# ===============================
 
 def save_bet_to_tracker(date, league, match, pick, prob, odds_key=None):
     file_name = "roi_tracker.csv"
@@ -1332,85 +1344,80 @@ elif menu_choice == "🔮 Złote Typy AI":
                 st.info("⚠️ Algorytm uznał, że dzisiejsze mecze są zbyt ryzykowne na żaden pewny typ. Wróć jutro!")
             else:
                 for idx, m in enumerate(top_matches[:5]): 
+                    # KARTA MECZU PRO
                     st.markdown(f"""
-                    <div style="background: linear-gradient(135deg, #1e212b, #161922); border: 1px solid rgba(255,255,255,0.05); border-left: 5px solid {m['master_color']}; padding: 15px; border-radius: 12px; margin-bottom: 5px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); display: flex; justify-content: space-between; align-items: center;">
-                        <div style="display: flex; flex-direction: column;">
-                            <div style="color: #9da5b1; font-size: 0.8rem; text-transform: uppercase; margin-bottom: 5px;">
-                                🌍 <b style="color:#00b8ff;">{m['league']}</b> | {m['date'][11:]} | #{idx + 1} RANKINGU
+                    <div class="premium-card">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                            <div>
+                                <div class="league-tag">🌍 {m['league']} | {m['date'][11:]} | RANKING #{idx + 1}</div>
+                                <div class="match-title">{m['match']}</div>
+                                <div style="display: flex; gap: 10px;">
+                                    <span style="background: rgba(0, 184, 255, 0.1); color: #00b8ff; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: bold;">
+                                        KATEGORIA: {m['master_category']}
+                                    </span>
+                                </div>
                             </div>
-                            <div style="font-size: 1.4rem; font-weight: 900; color: white;">
-                                {m['match']}
-                            </div>
-                            <div style="margin-top: 8px;">
-                                <span style="background: rgba(255,255,255,0.05); padding: 5px 10px; border-radius: 5px; color: {m['master_color']}; font-weight: bold; font-size: 0.85rem;">
-                                    KATEGORIA: {m['master_category']}
-                                </span>
-                            </div>
-                        </div>
-                        <div style="text-align: right;">
-                            <div style="color: {m['master_color']}; font-size: 1.8rem; font-weight: 900; text-transform: uppercase;">
-                                {m['master_pick']}
-                            </div>
-                            <div style="font-size: 1rem; color: white; font-weight: bold; margin-top: 5px;">
-                                Pewność AI: <span style="color: #00ff88;">{m['master_prob']:.1f}%</span>
+                            <div class="pick-box" style="border-left-color: {m['master_color']}; min-width: 180px;">
+                                <div style="color: {m['master_color']}; font-size: 1.6rem; font-weight: 900; text-transform: uppercase;">
+                                    {m['master_pick']}
+                                </div>
+                                <div class="prob-text">
+                                    PEWNOŚĆ AI: <b style="color: #00ff88;">{m['master_prob']:.1f}%</b> | 
+                                    SUG. STAWKA: <b style="color: #ffcc00;">{calculate_kelly(m['master_prob'], m['master_odds'])}j</b>
+                                </div>
                             </div>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    # --- NOWOŚĆ: POLE DO WPISANIA KURSU ---
-                    col_space, col_odds, col_btn = st.columns([2, 1, 1.5])
+                    # PANEL AKCJI (Kursy i Zapis) - Zaraz pod kartą
+                    col_info, col_odds, col_btn = st.columns([1.5, 1, 1.5])
                     
-                    # Generujemy unikalny klucz dla tego pola, żeby AI wiedziało, z którego meczu czytać kurs
                     odds_input_key = f"odds_input_{idx}_{m['match'].replace(' ', '')}"
                     
+                    with col_info:
+                        st.markdown("<p style='color: #9da5b1; font-size: 0.8rem; margin-top: 10px;'>Wpisz kurs i zatwierdź zakład, aby AI zaczęło go śledzić.</p>", unsafe_allow_html=True)
+                    
                     with col_odds:
-                        st.number_input("Twój kurs u buka:", min_value=1.01, value=1.85, step=0.05, format="%.2f", key=odds_input_key)
+                        st.number_input("Kurs u buka:", min_value=1.01, value=1.85, step=0.05, format="%.2f", key=odds_input_key)
                         
                     with col_btn:
-                        st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True) # Margines, żeby przycisk był równo z polem
+                        st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
                         st.button(
-                            f"💾 Zapisz do ROI", 
+                            f"💾 Zagraj ten typ", 
                             key=f"roi_btn_{idx}_{m['match'].replace(' ', '')}", 
                             on_click=save_bet_to_tracker,
-                            args=(m['date'], m['league'], m['match'], m['master_pick'], m['master_prob'], odds_input_key), # Przekazujemy klucz do okienka!
+                            args=(m['date'], m['league'], m['match'], m['master_pick'], m['master_prob'], odds_input_key),
                             use_container_width=True
                         )
-                    st.write("")
+                    st.divider()
 
 # =====================================================================
 # --- EKRAN 3: DZIENNIK ZYSKÓW (TRACKER ROI) ---
 # =====================================================================
 elif menu_choice == "📈 Dziennik Zysków (ROI)":
     st.markdown("""
-    <div style="text-align: center; margin-bottom: 20px;">
-        <h2 style="color: #00ff88; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 5px;">📈 Dziennik Inwestora (ROI)</h2>
-        <p style="color: #9da5b1; font-size: 0.9rem;">Rozliczaj swoje typy, śledź skuteczność i analizuj wygenerowany zysk w czasie.</p>
+    <div style="text-align: center; margin-bottom: 30px;">
+        <h2 style="color: #00ff88; font-weight: 900; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 5px;">📈 DZIENNIK INWESTORA (ROI)</h2>
+        <p style="color: #9da5b1; font-size: 0.95rem; opacity: 0.8;">Śledź swoją drogę do profesjonalnego tradingu i analizuj przewagę nad bukmacherem.</p>
     </div>
     """, unsafe_allow_html=True)
 
     file_name = "roi_tracker.csv"
     
-    # ZABEZPIECZENIE: Sprawdzamy czy plik istnieje I czy nie jest pusty (> 0 bajtów)
     if not os.path.exists(file_name) or os.path.getsize(file_name) == 0:
-        st.info("📊 Twój Dziennik jest jeszcze pusty. Przejdź do 'Złote Typy AI', przeskanuj mecze i dodaj swoje pierwsze zakłady klikając 'Graj'!")
+        st.info("📊 Twój Dziennik jest jeszcze pusty. Dodaj pierwszy zakład z poziomu 'Złote Typy AI'!")
     else:
         try:
-            # Wczytanie danych z bazy
             df_bets = pd.read_csv(file_name)
-        except pd.errors.EmptyDataError:
-            st.error("⚠️ Plik z bazą danych jest uszkodzony (pusty). Usuń plik 'roi_tracker.csv' z folderu aplikacji i spróbuj ponownie.")
+        except:
+            st.error("⚠️ Błąd bazy danych.")
             st.stop()
         
-        # Jeśli plik jest pusty
-        if df_bets.empty:
-            st.info("📊 Twój Dziennik jest pusty. Dodaj zakłady z poziomu Złotych Typów.")
-        else:
-            # --- 1. SEKCJA: STATYSTYKI GŁÓWNE ---
-            # Filtrujemy tylko rozliczone typy do statystyk
+        if not df_bets.empty:
+            # --- OBLICZENIA STATYSTYK ---
             rozliczone = df_bets[df_bets['Status'].isin(['Wygrany', 'Przegrany'])]
-            
-            suma_stawek = len(rozliczone) * 100 # Zakładamy płaską stawkę 100j na typ
+            suma_stawek = len(rozliczone) * 100 
             zysk_strata = 0
             wygrane = 0
             
@@ -1424,66 +1431,76 @@ elif menu_choice == "📈 Dziennik Zysków (ROI)":
             yield_pct = (zysk_strata / suma_stawek * 100) if suma_stawek > 0 else 0
             win_rate = (wygrane / len(rozliczone) * 100) if len(rozliczone) > 0 else 0
             
-            # Kolory KPI
-            zysk_color = "#00ff88" if zysk_strata >= 0 else "#ff4b4b"
-            yield_color = "#00ff88" if yield_pct >= 0 else "#ff4b4b"
+            # --- NOWOCZESNE KAFELKI KPI (PREMIUM) ---
+            st.markdown(f"""
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 25px;">
+                <div class="premium-card" style="text-align: center; padding: 15px;">
+                    <div style="color: #9da5b1; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px;">Zagrane Typy</div>
+                    <div style="color: #00b8ff; font-size: 1.8rem; font-weight: 900;">{len(df_bets)}</div>
+                </div>
+                <div class="premium-card" style="text-align: center; padding: 15px; border-bottom: 2px solid #ffcc00;">
+                    <div style="color: #9da5b1; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px;">Skuteczność</div>
+                    <div style="color: #ffcc00; font-size: 1.8rem; font-weight: 900;">{win_rate:.1f}%</div>
+                </div>
+                <div class="premium-card" style="text-align: center; padding: 15px; border-bottom: 2px solid #00ff88;">
+                    <div style="color: #9da5b1; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px;">Zysk Netto</div>
+                    <div style="color: #00ff88; font-size: 1.8rem; font-weight: 900;">{zysk_strata:.1f}j</div>
+                </div>
+                <div class="premium-card" style="text-align: center; padding: 15px; border-bottom: 2px solid {'#00ff88' if yield_pct >= 0 else '#ff4b4b'};">
+                    <div style="color: #9da5b1; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px;">Yield (ROI)</div>
+                    <div style="color: {'#00ff88' if yield_pct >= 0 else '#ff4b4b'}; font-size: 1.8rem; font-weight: 900;">{yield_pct:.1f}%</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
-            col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
-            with col_kpi1:
-                st.markdown(f"""<div style="background: rgba(255,255,255,0.02); border-left: 4px solid #00b8ff; padding: 15px; border-radius: 10px; text-align: center;"><span style="color: #9da5b1; font-size: 0.8rem; text-transform: uppercase;">Zagrane Typy</span><br><b style="color: white; font-size: 1.8rem;">{len(df_bets)}</b></div>""", unsafe_allow_html=True)
-            with col_kpi2:
-                st.markdown(f"""<div style="background: rgba(255,255,255,0.02); border-left: 4px solid #ffcc00; padding: 15px; border-radius: 10px; text-align: center;"><span style="color: #9da5b1; font-size: 0.8rem; text-transform: uppercase;">Skuteczność (Win Rate)</span><br><b style="color: white; font-size: 1.8rem;">{win_rate:.1f}%</b></div>""", unsafe_allow_html=True)
-            with col_kpi3:
-                st.markdown(f"""<div style="background: rgba(255,255,255,0.02); border-left: 4px solid {zysk_color}; padding: 15px; border-radius: 10px; text-align: center;"><span style="color: #9da5b1; font-size: 0.8rem; text-transform: uppercase;">Czysty Zysk (100j/typ)</span><br><b style="color: {zysk_color}; font-size: 1.8rem;">{zysk_strata:.1f} j</b></div>""", unsafe_allow_html=True)
-            with col_kpi4:
-                st.markdown(f"""<div style="background: rgba(255,255,255,0.02); border-left: 4px solid {yield_color}; padding: 15px; border-radius: 10px; text-align: center;"><span style="color: #9da5b1; font-size: 0.8rem; text-transform: uppercase;">Yield (ROI)</span><br><b style="color: {yield_color}; font-size: 1.8rem;">{yield_pct:.1f}%</b></div>""", unsafe_allow_html=True)
+            # --- WYKRES TRENDU ---
+            if not rozliczone.empty:
+                rozliczone = rozliczone.copy()
+                rozliczone['Data_DT'] = pd.to_datetime(rozliczone['Data'])
+                rozliczone = rozliczone.sort_values('Data_DT')
+                rozliczone['Skumulowany_Zysk'] = rozliczone['Zysk_Strata'].cumsum()
+                
+                fig_equity = go.Figure()
+                fig_equity.add_trace(go.Scatter(x=list(range(len(rozliczone) + 1)), y=[0] + rozliczone['Skumulowany_Zysk'].tolist(), mode='lines+markers', line=dict(color='#00ff88', width=3), fill='tozeroy', fillcolor='rgba(0, 255, 136, 0.05)', name='Kapitał'))
+                fig_equity.update_layout(title="📈 TREND KAPITAŁU (JEDNOSTKI)", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='white'), margin=dict(l=0, r=0, t=40, b=0), height=250, xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.05)'))
+                st.plotly_chart(fig_equity, use_container_width=True)
 
+            # --- PRZYCISKI AKCJI (ŁADNIEJSZE) ---
+            c_auto, c_exp = st.columns([1, 1])
+            with c_auto:
+                if st.button("🔄 Uruchom Auto-Weryfikację AI", use_container_width=True, type="secondary"):
+                    with st.spinner("Przeszukuję bazę wyników..."):
+                        ile = auto_settle_bets()
+                        if ile > 0:
+                            st.success(f"✅ Rozliczono automatycznie {ile} kuponów!")
+                            st.rerun()
+                        else: st.info("ℹ️ Brak nowych wyników w systemie.")
+            with c_exp:
+                csv = df_bets.to_csv(index=False).encode('utf-8')
+                st.download_button(label="📥 Pobierz kopię Dziennika (CSV)", data=csv, file_name=f"moje_roi.csv", mime='text/csv', use_container_width=True)
+
+            # --- EDYTOR ZAKŁADÓW ---
             st.write("")
-            st.markdown("### 📝 Rozlicz swoje typy (Edytor na żywo)")
-            st.markdown("<p style='color: #9da5b1; font-size: 0.85rem;'>Kliknij dwa razy w komórkę w kolumnie <b>Status</b> lub <b>Kurs</b>, aby zaktualizować zakład. Edytor zapisze zmiany automatycznie po kliknięciu przycisku poniżej.</p>", unsafe_allow_html=True)
-
-            # --- 2. SEKCJA: EDYTOR DANYCH NA ŻYWO ---
-            # Konfigurujemy, które kolumny można edytować
+            st.markdown("<div class='premium-card' style='padding: 20px;'> <h3 style='margin-top: 0; color: white;'>📝 Edytor Zakładów na Żywo</h3>", unsafe_allow_html=True)
             edited_df = st.data_editor(
                 df_bets,
                 column_config={
-                    "Status": st.column_config.SelectboxColumn(
-                        "Status Zakładu",
-                        help="Wybierz wynik z listy",
-                        options=["Oczekujący", "Wygrany", "Przegrany", "Zwrot"],
-                        required=True,
-                    ),
-                    "Kurs": st.column_config.NumberColumn(
-                        "Kurs (Odds)",
-                        help="Wpisz kurs z jakim zagrałeś u bukmachera",
-                        min_value=1.01,
-                        max_value=100.0,
-                        step=0.01,
-                        format="%.2f",
-                    ),
+                    "Status": st.column_config.SelectboxColumn("Status", options=["Oczekujący", "Wygrany", "Przegrany", "Zwrot"], required=True),
+                    "Kurs": st.column_config.NumberColumn("Kurs", min_value=1.01, format="%.2f"),
+                    "Pewnosc_AI": st.column_config.NumberColumn("AI %", disabled=True, format="%.1f%%"),
                     "Data": st.column_config.TextColumn("Data", disabled=True),
-                    "Liga": st.column_config.TextColumn("Liga", disabled=True),
                     "Mecz": st.column_config.TextColumn("Mecz", disabled=True),
-                    "Typ": st.column_config.TextColumn("Typ AI", disabled=True),
-                    "Pewnosc_AI": st.column_config.NumberColumn("Pewność %", disabled=True, format="%.1f%%"),
-                    "Zysk_Strata": None # Ukrywamy tę kolumnę, liczymy ją w tle
+                    "Typ": st.column_config.TextColumn("Typ Typ", disabled=True),
                 },
-                hide_index=True,
-                use_container_width=True,
-                num_rows="dynamic" # Pozwala nawet usuwać wiersze klawiszem Delete!
+                hide_index=True, use_container_width=True
             )
 
-            # Przycisk do zapisu zedytowanych danych
-            if st.button("💾 Zapisz zmiany w Dzienniku", type="primary", use_container_width=True):
-                # Przeliczamy zysk/stratę przy zapisie
+            if st.button("💾 Zapisz zmiany ręczne", type="primary", use_container_width=True):
                 for i, row in edited_df.iterrows():
-                    if row['Status'] == 'Wygrany':
-                        edited_df.at[i, 'Zysk_Strata'] = (100 * row['Kurs']) - 100
-                    elif row['Status'] == 'Przegrany':
-                        edited_df.at[i, 'Zysk_Strata'] = -100
-                    else:
-                        edited_df.at[i, 'Zysk_Strata'] = 0
-                        
+                    if row['Status'] == 'Wygrany': edited_df.at[i, 'Zysk_Strata'] = (100 * row['Kurs']) - 100
+                    elif row['Status'] == 'Przegrany': edited_df.at[i, 'Zysk_Strata'] = -100
+                    else: edited_df.at[i, 'Zysk_Strata'] = 0
                 edited_df.to_csv(file_name, index=False)
-                st.success("✅ Dziennik został zaktualizowany! Odświeżam stronę...")
-                st.rerun() # Szybkie odświeżenie żeby zaktualizować statystyki KPI na górze
+                st.success("✅ Zapisano!")
+                st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
