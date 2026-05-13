@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 import random
 import streamlit_authenticator as stauth
 from auth_config import config  # Importujemy Twoje ustawienia
+from thefuzz import process, fuzz
 
 # --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="AI Ultra Betting Center", page_icon="⚽", layout="wide")
@@ -140,7 +141,8 @@ def fetch_live_odds(api_key, league_name, h_team, a_team):
     if not sport_key: return None
     
     url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds/"
-    params = {"apiKey": api_key, "regions": "eu", "markets": "h2h"}
+    # ZMIANA: Dodano "totals" do rynków!
+    params = {"apiKey": api_key, "regions": "eu", "markets": "h2h,totals"}
     
     try:
         res = requests.get(url, params=params)
@@ -176,15 +178,14 @@ def get_schedule_from_api(api_key, league_name):
     if not sport_key: return []
     
     url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds/"
-    params = {"apiKey": api_key, "regions": "eu", "markets": "h2h"}
+    # ZMIANA: Dodano "totals" tutaj też, żeby skaner widział kursy na bramki!
+    params = {"apiKey": api_key, "regions": "eu", "markets": "h2h,totals"}
     try:
         res = requests.get(url, params=params)
         if res.status_code == 200:
             dane = res.json()
             if len(dane) > 0:
-                daty = sorted(list(set(m['commence_time'][:10] for m in dane)))
-                daty_str = " | ".join(daty)
-                # st.info(f"🛠️ System API żyje! Znalazł łącznie {len(dane)} meczów. Zaplanowane dni gry to: {daty_str}")
+                return dane
             else:
                 st.info("🛠️ System API działa, ale bukmacher nie wystawił jeszcze kursów na tę ligę.")
             return dane
@@ -222,7 +223,7 @@ with st.sidebar:
 
     menu_choice = st.radio(
         "Nawigacja Główna", 
-        ["🎯 Centrum Analizy", "🔮 Złote Typy AI"],
+        ["🎯 Centrum Analizy", "🔮 Złote Typy AI", "📈 Dziennik Zysków (ROI)"],
         label_visibility="collapsed"
     )
 
@@ -242,7 +243,7 @@ with st.sidebar:
         st.markdown("<hr style='border: none; border-top: 1px dashed rgba(255,255,255,0.1); margin: 15px 0;'>", unsafe_allow_html=True)
 
     # --- KLUCZ API WPISANY NA SZTYWNO (Ukryty w interfejsie) ---
-    user_api_key = "6018066337170b1992549ba219aee5df"
+    user_api_key = "b8aca90a6e292cd21be009ba58b2e73e"
 
     # NAPRAWIONA RAMKA SYSTEM ONLINE (Usunięty zduplikowany div)
     st.markdown("""
@@ -329,6 +330,30 @@ def calc_power(stats, mot_val, missing):
     if final_power > 105:
         final_power = 105 + (np.log(final_power - 104) * 4) 
     return round(np.clip(final_power, 40, 115), 1)
+
+def save_bet_to_tracker(date, league, match, pick, prob, odds_key=None):
+    file_name = "roi_tracker.csv"
+    
+    # Wyciągamy kurs wpisany przez Ciebie przed chwilą w okienko
+    final_odds = st.session_state.get(odds_key, 1.85) if odds_key else 1.85
+    
+    new_data = pd.DataFrame([{
+        "Data": date,
+        "Liga": league,
+        "Mecz": match,
+        "Typ": pick,
+        "Pewnosc_AI": round(prob, 1),
+        "Status": "Oczekujący",
+        "Kurs": round(float(final_odds), 2), 
+        "Zysk_Strata": 0.0
+    }])
+    
+    if os.path.exists(file_name) and os.path.getsize(file_name) > 0:
+        new_data.to_csv(file_name, mode='a', header=False, index=False)
+    else:
+        new_data.to_csv(file_name, index=False)
+        
+    st.toast(f"✅ Zapisano mecz {match} po kursie {final_odds} do Dziennika ROI!")
 
 def get_advanced_stats(team, side, mode, last_n=None):
     if 'df' not in globals(): return None
@@ -998,244 +1023,375 @@ elif menu_choice == "🔮 Złote Typy AI":
     </div>
     """, unsafe_allow_html=True)
 
-    # --- NOWY SUWAK DATY ---
     st.markdown("<h4 style='color: white; text-align: center; margin-top: 20px;'>📅 Wybierz dzień skanowania</h4>", unsafe_allow_html=True)
     days_map = {0: "Dzisiaj", 1: "Jutro", 2: "Pojutrze", 3: "Za 3 dni", 4: "Za 4 dni", 5: "Za 5 dni", 6: "Za 6 dni", 7: "Za 7 dni"}
     
-    # Generowanie ładnych etykiet z datami na żywo
     selected_day_offset = st.select_slider(
         "", 
         options=list(days_map.keys()), 
         format_func=lambda x: f"{days_map[x]} ({(pd.Timestamp.now() + pd.Timedelta(days=x)).strftime('%d.%m')})"
     )
     
-    # Obliczamy dokładną datę docelową w formacie YYYY-MM-DD
     target_date = (pd.Timestamp.now() + pd.Timedelta(days=selected_day_offset)).strftime('%Y-%m-%d')
     st.write("")
 
-    if st.button(f"🚀 Skanuj mecze na: {days_map[selected_day_offset]}", use_container_width=True):
-        if not user_api_key or user_api_key == "TWÓJ_KLUCZ_API_TUTAJ":
+    # ZMIANA 1: Guzik zapisuje w pamięci, że chcesz odpalić skaner dla tej daty
+    if st.button(f"🚀 Uruchom Globalny Skaner AI na: {days_map[selected_day_offset]}", use_container_width=True):
+        st.session_state['run_scanner'] = target_date
+
+    # ZMIANA 2: Sprawdzamy, czy w pamięci skaner jest włączony (dzięki temu po kliknięciu "Graj" ekran nie zniknie!)
+    if st.session_state.get('run_scanner') == target_date:
+        if not user_api_key or user_api_key == "TWÓJ_NOWY_KLUCZ_TUTAJ":
             st.error("⚠️ Brak klucza API! System potrzebuje klucza The Odds API, aby pobrać dzisiejszy terminarz.")
         else:
-            with st.spinner(f'Pobieram terminarz na {target_date} i wyliczam precyzyjne linie Over/Under...'):
-                api_matches = get_schedule_from_api(user_api_key, league_choice)
-                
-                if not api_matches:
-                    st.warning("Brak nadchodzących meczów dla tej ligi w najbliższym czasie.")
-                else:
+            # ZMIANA 3: Robimy te długie obliczenia tylko jeśli NIE MA ich jeszcze w pamięci
+            if 'skan_wyniki' not in st.session_state or st.session_state.get('skan_data') != target_date:
+                with st.spinner(f'🌍 Globalny Skaner pracuje! Przeszukuję wszystkie ligi na {target_date}...'):
                     analyzed_matches = []
-                    for m in api_matches:
-                        # --- FILTROWANIE PO DACIE ---
-                        match_date_full = m.get('commence_time', '')
-                        if not match_date_full.startswith(target_date):
-                            continue # Jeśli mecz nie jest z wybranego dnia, pomijamy go!
-                            
-                        h_api, a_api = m['home_team'], m['away_team']
-                        
-                        # --- LEPSZE DOPASOWANIE NAZW (SMART MATCH) ---
-                        def dopasuj(api_nazwa, lista_csv):
-                            # Funkcja pomocnicza do czyszczenia nazw z myślników i kropek
-                            def clean_name(txt):
-                                return txt.lower().replace("-", " ").replace(".", "").replace("é", "e").replace("á", "a").replace("í", "i").replace("ó", "o").replace("ú", "u").replace("ñ", "n").strip()
-                            
-                            n = clean_name(api_nazwa)
-                            
-                            # --- 1. SPECJALNY RADAR DLA PSG ---
-                            # Szukamy "saint germain" (bez myślnika) lub "psg"
-                            if "saint germain" in n or "psg" in n:
-                                for t in lista_csv:
-                                    t_c = clean_name(t)
-                                    if "paris sg" in t_c or "psg" in t_c or "saint germain" in t_c:
-                                        return t
-                            
-                            # --- 2. SPECJALNY RADAR DLA PARIS FC ---
-                            if "paris fc" in n:
-                                for t in lista_csv:
-                                    if "paris fc" in clean_name(t): return t
-
-                            # --- 3. SŁOWNIK TŁUMACZEŃ NAZW ---
-                            slownik = {
-                                # Angielskie
-                                "manchester city": "Man City", "manchester united": "Man United",
-                                "wolverhampton": "Wolves", "nottingham": "Nott'm Forest",
-                                "sheffield": "Sheff Utd", "newcastle": "Newcastle",
-                                "west ham": "West Ham", "tottenham": "Tottenham",
-                                "aston villa": "Aston Villa", "crystal palace": "Crystal Palace",
-                                
-                                # Hiszpańskie (Rozwiązanie Twojego problemu)
-                                "alavés": "Alaves",
-                                "alaves": "Alaves",
-                                "athletic bilbao": "Ath Bilbao",
-                                "athletic club": "Ath Bilbao",
-                                "espanyol": "Espanol",
-                                "español": "Espanol",
-                                "atletico madrid": "Ath Madrid",
-                                "celta vigo": "Celta",
-                                "real betis": "Betis",
-                                "real sociedad": "Sociedad"
-                            }
-                            for klucz, wartosc in slownik.items():
-                                if klucz in n:
-                                    for t in lista_csv:
-                                        if t == wartosc: return t
-                            
-                            # --- 4. KLASYCZNE SZUKANIE ---
-                            for t in lista_csv:
-                                t_l = clean_name(t)
-                                if t_l == n or t_l in n or n in t_l: return t
-                            return None
-
-                        h_csv = dopasuj(h_api, teams)
-                        a_csv = dopasuj(a_api, teams)
-                        
-                        if not (h_csv and a_csv and h_csv != a_csv):
-                            st.warning(f"⚠️ Odrzucono: **{h_api} vs {a_api}** (Brak zgodności nazw API z plikiem CSV)")
-                            continue
-                            
-                        # Symulujemy konkretny mecz
-                        h_stats = get_advanced_stats(h_csv, 'Home', "Wszystkie", 5)
-                        a_stats = get_advanced_stats(a_csv, 'Away', "Wszystkie", 5)
-                        
-                        if not (h_stats and a_stats):
-                            st.warning(f"⚠️ Odrzucono: **{h_csv} vs {a_csv}** (Za mało statystyk w bazie CSV)")
-                            continue
-
-                        if h_stats and a_stats:
-                                # 1. 1X2 Szanse - IDENTYCZNA LOGIKA JAK W CENTRUM ANALIZY
-                                _, mot_h_val, _, _ = get_auto_motivation(h_csv)
-                                _, mot_a_val, _, _ = get_auto_motivation(a_csv)
-                                
-                                # Wyliczamy siłę (Power Index) z uwzględnieniem motywacji
-                                h_adj = calc_power(h_stats, mot_h_val, 0) # 0 osłabień domyślnie
-                                a_adj = calc_power(a_stats, mot_a_val, 0)
-                                
-                                l_h = max(0.1, ((h_stats['gf'] + a_stats['ga']) / 2.0) * (h_adj / 100.0))
-                                l_a = max(0.1, ((a_stats['gf'] + h_stats['ga']) / 2.0) * (a_adj / 100.0))
-
-                                # Symulacja Monte Carlo
-                                s_h = np.random.poisson(l_h, 20000)
-                                s_a = np.random.poisson(l_a, 20000)
-                                
-                                r_w, r_d, r_l = np.mean(s_h > s_a), np.mean(s_h == s_a), np.mean(s_h < s_a)
-                                
-                                # Dixon-Coles (Korekta na remisy)
-                                p00, p11 = np.mean((s_h==0)&(s_a==0)), np.mean((s_h==1)&(s_a==1))
-                                dc_boost = 0.04 + (p00 * 0.2) + (p11 * 0.2)
-                                if abs(h_adj - a_adj) < 10: dc_boost += 0.05
-                                
-                                chaos = (h_stats['chaos'] + a_stats['chaos']) / 20.0
-                                adj_d = r_d + dc_boost - (chaos * 0.03)
-                                
-                                if r_w > r_l:
-                                    adj_w, adj_l = r_w - (dc_boost * 0.7), r_l - (dc_boost * 0.3)
-                                else:
-                                    adj_l, adj_w = r_l - (dc_boost * 0.7), r_w - (dc_boost * 0.3)
-                                    
-                                total = max(0.001, adj_w + adj_d + adj_l)
-                                p_win_raw, p_draw_raw, p_loss_raw = adj_w/total, adj_d/total, adj_l/total
-                                
-                                max_prob = max(p_win_raw, p_draw_raw, p_loss_raw)
-                                if max_prob == p_win_raw: best_pick = f"Wygra {h_csv} (1)"
-                                elif max_prob == p_loss_raw: best_pick = f"Wygra {a_csv} (2)"
-                                else: best_pick = "Remis (X)"
-                                
-                                # 2. Czyste Oczekiwane Wartości
-                                real_exp_goals = (h_stats['gf'] + a_stats['ga'])/2 + (a_stats['gf'] + h_stats['ga'])/2
-                                exp_cards = (h_stats['yellows'] + a_stats['yellows'])/2 + 1.2
-                                exp_corners = (h_stats['corners'] + a_stats['opp_corners'])/2 + (a_stats['corners'] + h_stats['opp_corners'])/2
-                                
-                                date_str = match_date_full[:16].replace('T', ' ')
-                                
-                                analyzed_matches.append({
-                                    'match': f"{h_csv} - {a_csv}",
-                                    'date': date_str,
-                                    'p1': p_win_raw * 100,
-                                    'px': p_draw_raw * 100,
-                                    'p2': p_loss_raw * 100,
-                                    'safe_prob': max_prob * 100,
-                                    'pick': best_pick,
-                                    'exp_goals_val': real_exp_goals,
-                                    'card_val': exp_cards,
-                                    'corner_val': exp_corners
-                                })
                     
-                    if not analyzed_matches:
-                        st.warning(f"Brak dopasowanych meczów na dzień: {target_date}. Spróbuj przesunąć suwak.")
+                    for current_league in all_data.keys():
+                        league_choice = current_league
+                        df = all_data[current_league]
+                        
+                        current_season_df = df[df['Season'] == '2526']
+                        if not current_season_df.empty:
+                            teams = sorted(current_season_df['HomeTeam'].unique())
+                        else:
+                            teams = sorted(df['HomeTeam'].unique())
+                            
+                        api_matches = get_schedule_from_api(user_api_key, current_league)
+                        if not api_matches: continue 
+                            
+                        for m in api_matches:
+                            match_date_full = m.get('commence_time', '')
+                            if not match_date_full.startswith(target_date): continue 
+                                
+                            h_api, a_api = m['home_team'], m['away_team']
+                            
+                            def dopasuj(api_nazwa, lista_csv):
+                                def clean_name(txt):
+                                    return txt.lower().replace("-", " ").replace(".", "").replace("é", "e").replace("á", "a").replace("í", "i").replace("ó", "o").replace("ú", "u").replace("ñ", "n").strip()
+                                
+                                n = clean_name(api_nazwa)
+                                
+                                if "saint germain" in n or "psg" in n:
+                                    for t in lista_csv:
+                                        t_c = clean_name(t)
+                                        if "paris sg" in t_c or "psg" in t_c or "saint germain" in t_c: return t
+                                
+                                if "paris fc" in n:
+                                    for t in lista_csv:
+                                        if "paris fc" in clean_name(t): return t
+
+                                slownik = {
+                                    "manchester city": "Man City", "manchester united": "Man United",
+                                    "wolverhampton": "Wolves", "nottingham": "Nott'm Forest",
+                                    "sheffield": "Sheff Utd", "newcastle": "Newcastle",
+                                    "west ham": "West Ham", "tottenham": "Tottenham",
+                                    "aston villa": "Aston Villa", "crystal palace": "Crystal Palace",
+                                    "alavés": "Alaves", "alaves": "Alaves",
+                                    "athletic bilbao": "Ath Bilbao", "athletic club": "Ath Bilbao",
+                                    "espanyol": "Espanol", "español": "Espanol",
+                                    "atletico madrid": "Ath Madrid", "celta vigo": "Celta",
+                                    "real betis": "Betis", "real sociedad": "Sociedad"
+                                }
+                                for klucz, wartosc in slownik.items():
+                                    if klucz in n:
+                                        for t in lista_csv:
+                                            if t == wartosc: return t
+                                
+                                for t in lista_csv:
+                                    t_l = clean_name(t)
+                                    if t_l == n or t_l in n or n in t_l: return t
+                                return None
+
+                            h_csv = dopasuj(h_api, teams)
+                            a_csv = dopasuj(a_api, teams)
+                            
+                            if not (h_csv and a_csv and h_csv != a_csv): continue
+                                
+                            h_stats = get_advanced_stats(h_csv, 'Home', "Wszystkie", 5)
+                            a_stats = get_advanced_stats(a_csv, 'Away', "Wszystkie", 5)
+                            
+                            if not (h_stats and a_stats): continue
+
+                            _, mot_h_val, _, _ = get_auto_motivation(h_csv)
+                            _, mot_a_val, _, _ = get_auto_motivation(a_csv)
+                            
+                            h_adj = calc_power(h_stats, mot_h_val, 0)
+                            a_adj = calc_power(a_stats, mot_a_val, 0)
+                            
+                            l_h = max(0.1, ((h_stats['gf'] + a_stats['ga']) / 2.0) * (h_adj / 100.0))
+                            l_a = max(0.1, ((a_stats['gf'] + h_stats['ga']) / 2.0) * (a_adj / 100.0))
+
+                            s_h = np.random.poisson(l_h, 20000)
+                            s_a = np.random.poisson(l_a, 20000)
+                            
+                            r_w, r_d, r_l = np.mean(s_h > s_a), np.mean(s_h == s_a), np.mean(s_h < s_a)
+                            
+                            p00, p11 = np.mean((s_h==0)&(s_a==0)), np.mean((s_h==1)&(s_a==1))
+                            dc_boost = 0.04 + (p00 * 0.2) + (p11 * 0.2)
+                            if abs(h_adj - a_adj) < 10: dc_boost += 0.05
+                            
+                            chaos = (h_stats['chaos'] + a_stats['chaos']) / 20.0
+                            adj_d = r_d + dc_boost - (chaos * 0.03)
+                            
+                            if r_w > r_l:
+                                adj_w, adj_l = r_w - (dc_boost * 0.7), r_l - (dc_boost * 0.3)
+                            else:
+                                adj_l, adj_w = r_l - (dc_boost * 0.7), r_w - (dc_boost * 0.3)
+                                
+                            total = max(0.001, adj_w + adj_d + adj_l)
+                            p_win_raw, p_draw_raw, p_loss_raw = adj_w/total, adj_d/total, adj_l/total
+                            
+                            max_prob = max(p_win_raw, p_draw_raw, p_loss_raw)
+                            if max_prob == p_win_raw: best_pick = f"Wygra {h_csv} (1)"
+                            elif max_prob == p_loss_raw: best_pick = f"Wygra {a_csv} (2)"
+                            else: best_pick = "Remis (X)"
+                            
+                            real_exp_goals = (h_stats['gf'] + a_stats['ga'])/2 + (a_stats['gf'] + h_stats['ga'])/2
+                            exp_cards = (h_stats['yellows'] + a_stats['yellows'])/2 + 1.2
+                            exp_corners = (h_stats['corners'] + a_stats['opp_corners'])/2 + (a_stats['corners'] + h_stats['opp_corners'])/2
+                            
+                            date_str = match_date_full[:16].replace('T', ' ')
+                            
+                            analyzed_matches.append({
+                                'match': f"{h_csv} - {a_csv}",
+                                'league': current_league, 
+                                'date': date_str,
+                                'safe_prob': max_prob * 100,
+                                'pick': best_pick,
+                                'exp_goals_val': real_exp_goals,
+                                'card_val': exp_cards,
+                                'corner_val': exp_corners,
+                                'api_data': m,     # <--- Zapisujemy surowe dane z API
+                                'h_api': h_api,    # <--- Zapisujemy nazwy z API do szukania kursów
+                                'a_api': a_api
+                            })
+                    
+                    for m in analyzed_matches:
+                        candidates = []
+                        if m['safe_prob'] > 50.0: 
+                            prob_1x2 = min(94.0, m['safe_prob'] * 1.15)
+                            candidates.append(("1X2: " + m['pick'], prob_1x2, "🛡️ 1X2", "#00ff88"))
+                        if m['exp_goals_val'] >= 2.9: 
+                            prob_over = min(92.0, 50.0 + (m['exp_goals_val'] - 2.5) * 18)
+                            candidates.append(("Powyżej 2.5 gola", prob_over, "⚽ GOLE", "#00d4ff"))
+                        elif m['exp_goals_val'] <= 2.2: 
+                            prob_under = min(92.0, 50.0 + (2.5 - m['exp_goals_val']) * 22)
+                            candidates.append(("Poniżej 2.5 gola", prob_under, "🧊 GOLE (Under)", "#a020f0"))
+                        if m['card_val'] >= 4.8: 
+                            prob_cards_over = min(90.0, 50.0 + (m['card_val'] - 4.0) * 12)
+                            candidates.append(("Powyżej 4.5 kartek", prob_cards_over, "🟨 KARTKI", "#ffcc00"))
+                        elif m['card_val'] <= 3.2:
+                            prob_cards_under = min(90.0, 50.0 + (4.0 - m['card_val']) * 15)
+                            candidates.append(("Poniżej 3.5 kartek", prob_cards_under, "🟨 KARTKI (Under)", "#a020f0"))
+                        if m['corner_val'] >= 10.8: 
+                            prob_corn_over = min(90.0, 50.0 + (m['corner_val'] - 9.5) * 10)
+                            candidates.append(("Powyżej 9.5 rożnych", prob_corn_over, "⛳ ROŻNE", "#f72585"))
+                        elif m['corner_val'] <= 8.2:
+                            prob_corn_under = min(90.0, 50.0 + (9.5 - m['corner_val']) * 12)
+                            candidates.append(("Poniżej 9.5 rożnych", prob_corn_under, "⛳ ROŻNE (Under)", "#a020f0"))
+
+                        if candidates:
+                            best_signal = max(candidates, key=lambda x: x[1])
+                            m['master_pick'] = best_signal[0]
+                            m['master_prob'] = best_signal[1]
+                            m['master_category'] = best_signal[2]
+                            m['master_color'] = best_signal[3]
+                            
+                            # --- WYCIĄGANIE PRAWDZIWYCH KURSÓW Z THE ODDS API ---
+                            m['master_odds'] = 1.85 # Domyślny kurs dla kartek/rożnych
+                            try:
+                                for b in m['api_data'].get('bookmakers', []):
+                                    for market in b.get('markets', []):
+                                        if market['key'] == 'h2h' and "1X2" in m['master_category']:
+                                            for out in market['outcomes']:
+                                                if (out['name'] == m['h_api'] and "(1)" in m['master_pick']) or \
+                                                   (out['name'] == m['a_api'] and "(2)" in m['master_pick']) or \
+                                                   (out['name'] == 'Draw' and "(X)" in m['master_pick']):
+                                                    m['master_odds'] = out['price']
+                                                    break
+                                        elif market['key'] == 'totals' and "GOLE" in m['master_category']:
+                                            for out in market['outcomes']:
+                                                if out['name'] == 'Over' and "Powyżej" in m['master_pick']:
+                                                    m['master_odds'] = out['price']
+                                                    break
+                                                elif out['name'] == 'Under' and "Poniżej" in m['master_pick']:
+                                                    m['master_odds'] = out['price']
+                                                    break
+                            except:
+                                pass
+                        else:
+                            m['master_prob'] = 0
+
+                    top_matches = sorted([m for m in analyzed_matches if m['master_prob'] > 60], key=lambda x: x['master_prob'], reverse=True)
+                    st.session_state['skan_wyniki'] = top_matches
+                    st.session_state['skan_data'] = target_date
+
+            # ---- WYŚWIETLAMY ZAPISANE WYNIKI Z PAMIĘCI ----
+            top_matches = st.session_state.get('skan_wyniki', [])
+
+            st.write("")
+            st.markdown("<h3 style='text-align: center; color: #ffcc00; text-transform: uppercase;'>🏆 TOP 5 ZŁOTYCH TYPÓW DNIA 🏆</h3>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; color: #9da5b1; margin-bottom: 25px;'>System odrzucił słabe sygnały i wybrał absolutnie najlepszy rynek do obstawienia dla każdego meczu.</p>", unsafe_allow_html=True)
+            
+            if not top_matches:
+                st.info("⚠️ Algorytm uznał, że dzisiejsze mecze są zbyt ryzykowne na żaden pewny typ. Wróć jutro!")
+            else:
+                for idx, m in enumerate(top_matches[:5]): 
+                    st.markdown(f"""
+                    <div style="background: linear-gradient(135deg, #1e212b, #161922); border: 1px solid rgba(255,255,255,0.05); border-left: 5px solid {m['master_color']}; padding: 15px; border-radius: 12px; margin-bottom: 5px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); display: flex; justify-content: space-between; align-items: center;">
+                        <div style="display: flex; flex-direction: column;">
+                            <div style="color: #9da5b1; font-size: 0.8rem; text-transform: uppercase; margin-bottom: 5px;">
+                                🌍 <b style="color:#00b8ff;">{m['league']}</b> | {m['date'][11:]} | #{idx + 1} RANKINGU
+                            </div>
+                            <div style="font-size: 1.4rem; font-weight: 900; color: white;">
+                                {m['match']}
+                            </div>
+                            <div style="margin-top: 8px;">
+                                <span style="background: rgba(255,255,255,0.05); padding: 5px 10px; border-radius: 5px; color: {m['master_color']}; font-weight: bold; font-size: 0.85rem;">
+                                    KATEGORIA: {m['master_category']}
+                                </span>
+                            </div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="color: {m['master_color']}; font-size: 1.8rem; font-weight: 900; text-transform: uppercase;">
+                                {m['master_pick']}
+                            </div>
+                            <div style="font-size: 1rem; color: white; font-weight: bold; margin-top: 5px;">
+                                Pewność AI: <span style="color: #00ff88;">{m['master_prob']:.1f}%</span>
+                            </div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # --- NOWOŚĆ: POLE DO WPISANIA KURSU ---
+                    col_space, col_odds, col_btn = st.columns([2, 1, 1.5])
+                    
+                    # Generujemy unikalny klucz dla tego pola, żeby AI wiedziało, z którego meczu czytać kurs
+                    odds_input_key = f"odds_input_{idx}_{m['match'].replace(' ', '')}"
+                    
+                    with col_odds:
+                        st.number_input("Twój kurs u buka:", min_value=1.01, value=1.85, step=0.05, format="%.2f", key=odds_input_key)
+                        
+                    with col_btn:
+                        st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True) # Margines, żeby przycisk był równo z polem
+                        st.button(
+                            f"💾 Zapisz do ROI", 
+                            key=f"roi_btn_{idx}_{m['match'].replace(' ', '')}", 
+                            on_click=save_bet_to_tracker,
+                            args=(m['date'], m['league'], m['match'], m['master_pick'], m['master_prob'], odds_input_key), # Przekazujemy klucz do okienka!
+                            use_container_width=True
+                        )
+                    st.write("")
+
+# =====================================================================
+# --- EKRAN 3: DZIENNIK ZYSKÓW (TRACKER ROI) ---
+# =====================================================================
+elif menu_choice == "📈 Dziennik Zysków (ROI)":
+    st.markdown("""
+    <div style="text-align: center; margin-bottom: 20px;">
+        <h2 style="color: #00ff88; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 5px;">📈 Dziennik Inwestora (ROI)</h2>
+        <p style="color: #9da5b1; font-size: 0.9rem;">Rozliczaj swoje typy, śledź skuteczność i analizuj wygenerowany zysk w czasie.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    file_name = "roi_tracker.csv"
+    
+    # ZABEZPIECZENIE: Sprawdzamy czy plik istnieje I czy nie jest pusty (> 0 bajtów)
+    if not os.path.exists(file_name) or os.path.getsize(file_name) == 0:
+        st.info("📊 Twój Dziennik jest jeszcze pusty. Przejdź do 'Złote Typy AI', przeskanuj mecze i dodaj swoje pierwsze zakłady klikając 'Graj'!")
+    else:
+        try:
+            # Wczytanie danych z bazy
+            df_bets = pd.read_csv(file_name)
+        except pd.errors.EmptyDataError:
+            st.error("⚠️ Plik z bazą danych jest uszkodzony (pusty). Usuń plik 'roi_tracker.csv' z folderu aplikacji i spróbuj ponownie.")
+            st.stop()
+        
+        # Jeśli plik jest pusty
+        if df_bets.empty:
+            st.info("📊 Twój Dziennik jest pusty. Dodaj zakłady z poziomu Złotych Typów.")
+        else:
+            # --- 1. SEKCJA: STATYSTYKI GŁÓWNE ---
+            # Filtrujemy tylko rozliczone typy do statystyk
+            rozliczone = df_bets[df_bets['Status'].isin(['Wygrany', 'Przegrany'])]
+            
+            suma_stawek = len(rozliczone) * 100 # Zakładamy płaską stawkę 100j na typ
+            zysk_strata = 0
+            wygrane = 0
+            
+            for _, row in rozliczone.iterrows():
+                if row['Status'] == 'Wygrany':
+                    wygrane += 1
+                    zysk_strata += (100 * row['Kurs']) - 100
+                elif row['Status'] == 'Przegrany':
+                    zysk_strata -= 100
+                    
+            yield_pct = (zysk_strata / suma_stawek * 100) if suma_stawek > 0 else 0
+            win_rate = (wygrane / len(rozliczone) * 100) if len(rozliczone) > 0 else 0
+            
+            # Kolory KPI
+            zysk_color = "#00ff88" if zysk_strata >= 0 else "#ff4b4b"
+            yield_color = "#00ff88" if yield_pct >= 0 else "#ff4b4b"
+
+            col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
+            with col_kpi1:
+                st.markdown(f"""<div style="background: rgba(255,255,255,0.02); border-left: 4px solid #00b8ff; padding: 15px; border-radius: 10px; text-align: center;"><span style="color: #9da5b1; font-size: 0.8rem; text-transform: uppercase;">Zagrane Typy</span><br><b style="color: white; font-size: 1.8rem;">{len(df_bets)}</b></div>""", unsafe_allow_html=True)
+            with col_kpi2:
+                st.markdown(f"""<div style="background: rgba(255,255,255,0.02); border-left: 4px solid #ffcc00; padding: 15px; border-radius: 10px; text-align: center;"><span style="color: #9da5b1; font-size: 0.8rem; text-transform: uppercase;">Skuteczność (Win Rate)</span><br><b style="color: white; font-size: 1.8rem;">{win_rate:.1f}%</b></div>""", unsafe_allow_html=True)
+            with col_kpi3:
+                st.markdown(f"""<div style="background: rgba(255,255,255,0.02); border-left: 4px solid {zysk_color}; padding: 15px; border-radius: 10px; text-align: center;"><span style="color: #9da5b1; font-size: 0.8rem; text-transform: uppercase;">Czysty Zysk (100j/typ)</span><br><b style="color: {zysk_color}; font-size: 1.8rem;">{zysk_strata:.1f} j</b></div>""", unsafe_allow_html=True)
+            with col_kpi4:
+                st.markdown(f"""<div style="background: rgba(255,255,255,0.02); border-left: 4px solid {yield_color}; padding: 15px; border-radius: 10px; text-align: center;"><span style="color: #9da5b1; font-size: 0.8rem; text-transform: uppercase;">Yield (ROI)</span><br><b style="color: {yield_color}; font-size: 1.8rem;">{yield_pct:.1f}%</b></div>""", unsafe_allow_html=True)
+
+            st.write("")
+            st.markdown("### 📝 Rozlicz swoje typy (Edytor na żywo)")
+            st.markdown("<p style='color: #9da5b1; font-size: 0.85rem;'>Kliknij dwa razy w komórkę w kolumnie <b>Status</b> lub <b>Kurs</b>, aby zaktualizować zakład. Edytor zapisze zmiany automatycznie po kliknięciu przycisku poniżej.</p>", unsafe_allow_html=True)
+
+            # --- 2. SEKCJA: EDYTOR DANYCH NA ŻYWO ---
+            # Konfigurujemy, które kolumny można edytować
+            edited_df = st.data_editor(
+                df_bets,
+                column_config={
+                    "Status": st.column_config.SelectboxColumn(
+                        "Status Zakładu",
+                        help="Wybierz wynik z listy",
+                        options=["Oczekujący", "Wygrany", "Przegrany", "Zwrot"],
+                        required=True,
+                    ),
+                    "Kurs": st.column_config.NumberColumn(
+                        "Kurs (Odds)",
+                        help="Wpisz kurs z jakim zagrałeś u bukmachera",
+                        min_value=1.01,
+                        max_value=100.0,
+                        step=0.01,
+                        format="%.2f",
+                    ),
+                    "Data": st.column_config.TextColumn("Data", disabled=True),
+                    "Liga": st.column_config.TextColumn("Liga", disabled=True),
+                    "Mecz": st.column_config.TextColumn("Mecz", disabled=True),
+                    "Typ": st.column_config.TextColumn("Typ AI", disabled=True),
+                    "Pewnosc_AI": st.column_config.NumberColumn("Pewność %", disabled=True, format="%.1f%%"),
+                    "Zysk_Strata": None # Ukrywamy tę kolumnę, liczymy ją w tle
+                },
+                hide_index=True,
+                use_container_width=True,
+                num_rows="dynamic" # Pozwala nawet usuwać wiersze klawiszem Delete!
+            )
+
+            # Przycisk do zapisu zedytowanych danych
+            if st.button("💾 Zapisz zmiany w Dzienniku", type="primary", use_container_width=True):
+                # Przeliczamy zysk/stratę przy zapisie
+                for i, row in edited_df.iterrows():
+                    if row['Status'] == 'Wygrany':
+                        edited_df.at[i, 'Zysk_Strata'] = (100 * row['Kurs']) - 100
+                    elif row['Status'] == 'Przegrany':
+                        edited_df.at[i, 'Zysk_Strata'] = -100
                     else:
-                        # Teraz pokaże wszystko, co ma chociaż 40% szans (czyli PSG i Strasbourg wrócą)
-                        safe_m = sorted([m for m in analyzed_matches if m['safe_prob'] >= 40.0], key=lambda x: x['safe_prob'], reverse=True)[:5]
+                        edited_df.at[i, 'Zysk_Strata'] = 0
                         
-                        # Gole (Granica: 2.6 gola)
-                        over_goals = sorted([m for m in analyzed_matches if m['exp_goals_val'] >= 2.6], key=lambda x: x['exp_goals_val'], reverse=True)[:3]
-                        under_goals = sorted([m for m in analyzed_matches if m['exp_goals_val'] < 2.6], key=lambda x: x['exp_goals_val'])[:3]
-                        
-                        # Kartki (Granica: 4.0 kartek)
-                        over_cards = sorted([m for m in analyzed_matches if m['card_val'] >= 4.0], key=lambda x: x['card_val'], reverse=True)[:3]
-                        under_cards = sorted([m for m in analyzed_matches if m['card_val'] < 4.0], key=lambda x: x['card_val'])[:3]
-                        
-                        # Rożne (Granica: 10.0 rożnych)
-                        over_corners = sorted([m for m in analyzed_matches if m['corner_val'] >= 10.0], key=lambda x: x['corner_val'], reverse=True)[:3]
-                        under_corners = sorted([m for m in analyzed_matches if m['corner_val'] < 10.0], key=lambda x: x['corner_val'])[:3]
-                        
-                        st.write("")
-                        t_safe, t_goals, t_cards, t_corners = st.tabs(["🛡️ Pewniaki (1X2)", "⚽ Gole (O/U)", "🟨 Kartki (O/U)", "⛳ Rożne (O/U)"])
-                        
-                        def make_match_card(match_name, date, value_html, desc_top, desc_bottom, border_color):
-                            return f"""<div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-left: 4px solid {border_color}; padding: 15px; border-radius: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;"><div style="display: flex; flex-direction: column;"><span style="color: #9da5b1; font-size: 0.7rem; text-transform: uppercase;">MECZ: {date} | <b style="color:white;">{desc_top}</b></span><span style="font-size: 1.1rem; font-weight: bold; color: white; margin-top: 5px;">{match_name}</span></div><div style="text-align: right;"><div style="font-size: 1.3rem; font-weight: 900;">{value_html}</div><div style="font-size: 0.75rem; color: #9da5b1; margin-top: 3px;">{desc_bottom}</div></div></div>"""
-
-                        with t_safe:
-                            st.markdown("<h4 style='color: #00ff88;'>🛡️ Najwyższe Szanse na Wynik 1X2</h4>", unsafe_allow_html=True)
-                            for m in safe_m: 
-                                # Tworzymy ładny pasek z rozkładem procentów
-                                rozklad_html = f"""
-                                <span style='color:#00ff88;'>1: {m['p1']:.0f}%</span> | 
-                                <span style='color:#ffcc00;'>X: {m['px']:.0f}%</span> | 
-                                <span style='color:#ff4b4b;'>2: {m['p2']:.0f}%</span>
-                                """
-                                st.markdown(make_match_card(
-                                    m['match'], 
-                                    m['date'], 
-                                    f"<span style='color:#00ff88;'>{m['safe_prob']:.1f}%</span>", 
-                                    f"TYP: {m['pick']}", 
-                                    rozklad_html, # Tutaj wstawiamy nasz rozkład
-                                    "#00ff88"
-                                ), unsafe_allow_html=True)
-                        
-                        with t_goals:
-                            col_g1, col_g2 = st.columns(2)
-                            with col_g1:
-                                st.markdown("<h4 style='color: #00d4ff;'>🔥 TOP OVERY (Dużo Goli)</h4>", unsafe_allow_html=True)
-                                for m in over_goals:
-                                    line = max(1.5, np.floor(m['exp_goals_val'] - 0.5) + 0.5)
-                                    st.markdown(make_match_card(m['match'], m['date'], f"<span style='color:#00d4ff;'>Powyżej {line}</span>", "BRAMKI W MECZU", f"Oczekiwane Gole: {m['exp_goals_val']:.2f}", "#00d4ff"), unsafe_allow_html=True)
-                            with col_g2:
-                                st.markdown("<h4 style='color: #a020f0;'>🧊 TOP UNDERY (Mało Goli)</h4>", unsafe_allow_html=True)
-                                for m in under_goals:
-                                    line = min(3.5, np.ceil(m['exp_goals_val'] + 0.5) - 0.5)
-                                    st.markdown(make_match_card(m['match'], m['date'], f"<span style='color:#a020f0;'>Poniżej {line}</span>", "BRAMKI W MECZU", f"Oczekiwane Gole: {m['exp_goals_val']:.2f}", "#a020f0"), unsafe_allow_html=True)
-
-                        with t_cards:
-                            col_c1, col_c2 = st.columns(2)
-                            with col_c1:
-                                st.markdown("<h4 style='color: #ffcc00;'>🔥 OVERY (Rzeźnicy)</h4>", unsafe_allow_html=True)
-                                for m in over_cards:
-                                    line = max(3.5, np.floor(m['card_val'] - 0.5) + 0.5)
-                                    st.markdown(make_match_card(m['match'], m['date'], f"<span style='color:#ffcc00;'>Powyżej {line}</span>", "TYP NA KARTKI", f"Oczekiwane Kartki: {m['card_val']:.1f}", "#ffcc00"), unsafe_allow_html=True)
-                            with col_c2:
-                                st.markdown("<h4 style='color: #a020f0;'>🧊 UNDERY (Czysta Gra)</h4>", unsafe_allow_html=True)
-                                for m in under_cards:
-                                    line = max(2.5, np.ceil(m['card_val']) - 0.5)
-                                    st.markdown(make_match_card(m['match'], m['date'], f"<span style='color:#a020f0;'>Poniżej {line}</span>", "TYP NA KARTKI", f"Oczekiwane Kartki: {m['card_val']:.1f}", "#a020f0"), unsafe_allow_html=True)
-
-                        with t_corners:
-                            col_cor1, col_cor2 = st.columns(2)
-                            with col_cor1:
-                                st.markdown("<h4 style='color: #f72585;'>🔥 OVERY (Atak Skrzydłami)</h4>", unsafe_allow_html=True)
-                                for m in over_corners:
-                                    line = max(8.5, np.floor(m['corner_val'] - 0.5) + 0.5)
-                                    st.markdown(make_match_card(m['match'], m['date'], f"<span style='color:#f72585;'>Powyżej {line}</span>", "TYP NA ROŻNE", f"Oczekiwane Rożne: {m['corner_val']:.1f}", "#f72585"), unsafe_allow_html=True)
-                            with col_cor2:
-                                st.markdown("<h4 style='color: #a020f0;'>🧊 UNDERY (Gra Środkiem)</h4>", unsafe_allow_html=True)
-                                for m in under_corners:
-                                    line = max(7.5, np.ceil(m['corner_val']) - 0.5)
-                                    st.markdown(make_match_card(m['match'], m['date'], f"<span style='color:#a020f0;'>Poniżej {line}</span>", "TYP NA ROŻNE", f"Oczekiwane Rożne: {m['corner_val']:.1f}", "#a020f0"), unsafe_allow_html=True)
+                edited_df.to_csv(file_name, index=False)
+                st.success("✅ Dziennik został zaktualizowany! Odświeżam stronę...")
+                st.rerun() # Szybkie odświeżenie żeby zaktualizować statystyki KPI na górze
